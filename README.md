@@ -19,6 +19,8 @@ The host process exposes six management tools, eighteen relevant CodexPro tools,
 Every tool that operates inside a sandbox requires `sandbox_id`. chat2shell forwards ordinary CodexPro calls into the selected microVM and adapts Bash calls into bounded MCP requests without changing where commands execute.
 Calls to the same sandbox are serialized, while different conversations can reuse the same stable ID returned by `sandbox_list`.
 
+When `AGENTS.md` exists in the chat2shell data directory, `sandbox_create` returns its exact contents after creating or reusing a sandbox, and `sandbox_get` returns the current contents when opening an existing sandbox. These are global agent instructions for work inside chat2shell sandboxes, not MCP connection instructions or enforced policy. The file is read on each of those calls, so changes need no server restart. It is not copied into the sandbox or a workspace and is not returned by other tools.
+
 The static contract deliberately excludes CodexPro's generic supertool, self-test, and workspace-switching tool because they duplicate visible tools or bypass the sandbox's assigned workspace. CodexPro is installed only in the sandbox template; the host application does not import or execute it.
 
 ## Current policy
@@ -206,6 +208,8 @@ Other conversations connected to the same private app can find and reuse it:
 sandbox_list -> sandbox_get -> read/search/bash/... with sandbox_id
 ```
 
+Call `sandbox_get` before working in an existing sandbox so its current state and global sandbox instructions are loaded.
+
 Available management tools are `sandbox_create`, `sandbox_list`, `sandbox_get`, `sandbox_expose`, `sandbox_destroy`, and `workspace_list`.
 
 ## Configuration
@@ -215,6 +219,7 @@ Available management tools are `sandbox_create`, `sandbox_list`, `sandbox_get`, 
 Current locations are:
 
 - data: `~/.chat2shell`
+- global sandbox instructions: `<data directory>/AGENTS.md` when the file exists
 - state database: `~/.chat2shell/state/chat2shell.sqlite`
 - managed workspaces: `~/.chat2shell/workspaces`
 - host allow root: `~/repositories`
