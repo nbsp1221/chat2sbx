@@ -71,6 +71,7 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
   let listCalls = 0;
   let exposedPort: number | undefined;
   let requestedMemory: string | undefined;
+  let sandboxInstructions: string | undefined = '# Global sandbox instructions\n';
   const gateway = createGateway(config(), {
     authProvider: new SingleUserAuthProvider(),
     controlServer: {
@@ -81,10 +82,45 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
       },
       bashSessions: unusedBashSessions,
       codexProTools: [],
+      readSandboxInstructions() {
+        return Promise.resolve(sandboxInstructions);
+      },
       sandboxes: {
         create(_ownerId, request) {
           requestedMemory = request.memory;
-          return Promise.resolve({ status: 'created' as const });
+          if (request.workspacePath) {
+            return Promise.resolve({
+              status: 'approval_required' as const,
+              approval: {
+                createdAt: 1,
+                id: 'approval_test',
+                mode: 'clone' as const,
+                ownerId: 'local-owner',
+                requestedPath: request.workspacePath,
+                status: 'pending' as const,
+              },
+            });
+          }
+          return Promise.resolve({
+            status: 'created' as const,
+            sandbox: {
+              createdAt: 1,
+              expiresAt: 2,
+              id: 'sbx_test',
+              lastActivityAt: 1,
+              memory: '4g',
+              status: 'running' as const,
+              workspace: {
+                createdAt: 1,
+                id: 'ws_test',
+                kind: 'managed' as const,
+                mode: 'managed' as const,
+                ownerId: 'local-owner',
+                root: '/tmp/chat2shell/workspaces/ws_test',
+                status: 'approved' as const,
+              },
+            },
+          });
         },
         destroy() {
           return Promise.reject(new Error('not used'));
@@ -94,7 +130,23 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
           return Promise.resolve({ hostPort: 32_000, sandboxId, sandboxPort: port });
         },
         get() {
-          throw new Error('not used');
+          return {
+            createdAt: 1,
+            expiresAt: 2,
+            id: 'sbx_test',
+            lastActivityAt: 1,
+            memory: '4g',
+            status: 'running' as const,
+            workspace: {
+              createdAt: 1,
+              id: 'ws_test',
+              kind: 'managed' as const,
+              mode: 'managed' as const,
+              ownerId: 'local-owner',
+              root: '/tmp/chat2shell/workspaces/ws_test',
+              status: 'approved' as const,
+            },
+          };
         },
         list() {
           listCalls += 1;
@@ -159,6 +211,48 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
   });
   expect((created.result as { isError?: boolean }).isError).not.toBe(true);
   expect(requestedMemory).toBe('4g');
+  expect(
+    (created.result as { structuredContent: { sandbox_instructions?: string } }).structuredContent
+      .sandbox_instructions,
+  ).toBe('# Global sandbox instructions\n');
+
+  const opened = await rpc(url, 6, 'tools/call', {
+    arguments: { sandbox_id: 'sbx_test' },
+    name: 'sandbox_get',
+  });
+  expect(
+    (opened.result as { structuredContent: { sandbox_instructions?: string } }).structuredContent
+      .sandbox_instructions,
+  ).toBe('# Global sandbox instructions\n');
+
+  sandboxInstructions = '# Updated instructions\n';
+  const reopened = await rpc(url, 7, 'tools/call', {
+    arguments: { sandbox_id: 'sbx_test' },
+    name: 'sandbox_get',
+  });
+  expect(
+    (reopened.result as { structuredContent: { sandbox_instructions?: string } }).structuredContent
+      .sandbox_instructions,
+  ).toBe('# Updated instructions\n');
+
+  sandboxInstructions = undefined;
+  const openedWithoutInstructions = await rpc(url, 8, 'tools/call', {
+    arguments: { sandbox_id: 'sbx_test' },
+    name: 'sandbox_get',
+  });
+  expect(
+    (openedWithoutInstructions.result as { structuredContent: Record<string, unknown> })
+      .structuredContent,
+  ).not.toHaveProperty('sandbox_instructions');
+
+  sandboxInstructions = '# Must not accompany approval\n';
+  const approvalRequired = await rpc(url, 9, 'tools/call', {
+    arguments: { workspace_path: '/tmp/repository' },
+    name: 'sandbox_create',
+  });
+  expect(
+    (approvalRequired.result as { structuredContent: Record<string, unknown> }).structuredContent,
+  ).not.toHaveProperty('sandbox_instructions');
 });
 
 test('routes CodexPro tools by sandbox_id without forwarding routing fields', async () => {
@@ -189,6 +283,9 @@ test('routes CodexPro tools by sandbox_id without forwarding routing fields', as
       },
       bashSessions: unusedBashSessions,
       codexProTools: [readTool],
+      readSandboxInstructions() {
+        return Promise.resolve(undefined);
+      },
       sandboxes: {
         create() {
           return Promise.reject(new Error('not used'));
