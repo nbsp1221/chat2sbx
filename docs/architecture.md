@@ -89,7 +89,7 @@ Only the local CLI can approve or reject it, after which MCP callers refer to th
 
 Failures remove a partially created runtime and persist a `failed` record for diagnosis.
 
-The same global instructions are read and returned by `sandbox_get` when an existing sandbox is opened. An absent file adds no response field; any other read failure is reported. Instructions are not cached, copied into the microVM or workspace, returned by other tools, interpreted as commands, or enforced as security policy.
+The same global instructions are read and returned by `sandbox_get` when an existing sandbox is opened. An absent file adds no response field; symbolic links and other non-regular entries are rejected, and any other read failure is reported. Instructions are not cached, copied into the microVM or workspace, returned by other tools, interpreted as commands, or enforced as security policy.
 
 `maxActiveSandboxes` counts records in `creating`, `running`, or `destroying` state across this chat2shell database. Reuse and destruction are never blocked by the count limit. The default is unlimited. A per-sandbox memory value is passed directly as `sbx create --memory`; omitting it delegates to the Docker Sandboxes default. chat2shell does not implement cgroup discovery, memory admission, resource reservation, or automatic resizing.
 
