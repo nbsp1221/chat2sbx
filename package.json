@@ -30,6 +30,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint . && eslint .",
+    "prepublishOnly": "pnpm check",
     "release": "release-it",
     "start": "node dist/cli.mjs serve",
     "test": "vitest run --project unit --project integration",
