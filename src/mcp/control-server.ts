@@ -9,12 +9,13 @@ import type { BashSessionService } from '../codexpro/bash-sessions.js';
 import type { CodexProClientPool } from '../codexpro/client-pool.js';
 import type { SandboxService } from '../sandbox/service.js';
 import type { WorkspaceService } from '../workspaces/service.js';
+import { version } from '../version.js';
 
 const sandboxCreateTool: Tool = {
   name: 'sandbox_create',
   title: 'Create or Reuse Sandbox',
   description:
-    'Create an isolated Docker Sandbox, reuse the active sandbox for a workspace, or request host approval for a new host path.',
+    'Create an isolated Docker Sandbox, reuse the active sandbox for a workspace, or request host approval for a new host path. A created or reused sandbox includes the current global sandbox instructions when AGENTS.md exists in the chat2shell data directory.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -31,6 +32,12 @@ const sandboxCreateTool: Tool = {
         type: 'string',
         enum: ['managed', 'clone', 'direct'],
         description: 'Defaults to managed without a path and clone with a host path.',
+      },
+      memory: {
+        type: 'string',
+        pattern: '^[1-9][0-9]*(m|g)$',
+        description:
+          'Optional sandbox memory limit in binary megabytes or gigabytes, such as 512m or 4g. Omit it to use the Docker Sandbox default.',
       },
     },
     additionalProperties: false,
@@ -55,7 +62,8 @@ const sandboxListTool: Tool = {
 const sandboxGetTool: Tool = {
   name: 'sandbox_get',
   title: 'Get Sandbox',
-  description: 'Get the current state, workspace, and expiration times for one sandbox.',
+  description:
+    'Get the current state, workspace, expiration times, and current global sandbox instructions for one sandbox.',
   inputSchema: {
     type: 'object',
     properties: { sandbox_id: { type: 'string' } },
@@ -159,6 +167,13 @@ function jsonResult(value: unknown): CallToolResult {
   };
 }
 
+function withSandboxInstructions<T extends object>(
+  value: T,
+  instructions: string | undefined,
+): T & { sandbox_instructions?: string } {
+  return instructions === undefined ? value : { ...value, sandbox_instructions: instructions };
+}
+
 function errorResult(error: unknown): CallToolResult {
   const message = error instanceof Error ? error.message : String(error);
   return { isError: true, content: [{ type: 'text', text: message }] };
@@ -171,15 +186,16 @@ export interface ControlServerDependencies {
   readonly codexPro: Pick<CodexProClientPool, 'call'>;
   readonly bashSessions: Pick<BashSessionService, 'start' | 'poll' | 'stop'>;
   readonly codexProTools: readonly Tool[];
+  readonly readSandboxInstructions: () => Promise<string | undefined>;
 }
 
 export function createControlServer(dependencies: ControlServerDependencies): Server {
   const server = new Server(
-    { name: 'chat2shell', version: '0.2.0' },
+    { name: 'chat2shell', version },
     {
       capabilities: { tools: {} },
       instructions:
-        'Create or select an isolated sandbox first. Every sandbox tool requires an explicit sandbox_id. Bash is unrestricted inside the sandbox but never has host shell or host Docker access. Poll a Bash session with bash_poll while status=running or has_more_output=true, or terminate it with bash_stop.',
+        'Create or select an isolated sandbox first. Call sandbox_get before working in an existing sandbox so its current state and global sandbox instructions are loaded. Every sandbox tool requires an explicit sandbox_id. Bash is unrestricted inside the sandbox but never has host shell or host Docker access. Poll a Bash session with bash_poll while status=running or has_more_output=true, or terminate it with bash_stop.',
     },
   );
   const codexTools = dependencies.codexProTools;
@@ -198,23 +214,28 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
           if (mode && mode !== 'managed' && mode !== 'clone' && mode !== 'direct') {
             throw new Error('workspace_mode must be managed, clone, or direct');
           }
+          const instructions = await dependencies.readSandboxInstructions();
+          const result = await dependencies.sandboxes.create(dependencies.principalId, {
+            workspaceId: optionalString(args, 'workspace_id'),
+            workspacePath: optionalString(args, 'workspace_path'),
+            workspaceMode: mode,
+            memory: optionalString(args, 'memory'),
+          });
           return jsonResult(
-            await dependencies.sandboxes.create(dependencies.principalId, {
-              workspaceId: optionalString(args, 'workspace_id'),
-              workspacePath: optionalString(args, 'workspace_path'),
-              workspaceMode: mode,
-            }),
+            result.sandbox ? withSandboxInstructions(result, instructions) : result,
           );
         }
         case 'sandbox_list':
           return jsonResult({ sandboxes: dependencies.sandboxes.list(dependencies.principalId) });
-        case 'sandbox_get':
-          return jsonResult(
-            dependencies.sandboxes.get(
-              dependencies.principalId,
-              optionalString(args, 'sandbox_id') ?? '',
-            ),
+        case 'sandbox_get': {
+          const sandbox = dependencies.sandboxes.get(
+            dependencies.principalId,
+            optionalString(args, 'sandbox_id') ?? '',
           );
+          return jsonResult(
+            withSandboxInstructions(sandbox, await dependencies.readSandboxInstructions()),
+          );
+        }
         case 'sandbox_expose':
           return jsonResult(
             await dependencies.sandboxes.expose(

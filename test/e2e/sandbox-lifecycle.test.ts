@@ -12,6 +12,7 @@ import { BashSessionService } from '../../src/codexpro/bash-sessions.js';
 import { CodexProClientPool } from '../../src/codexpro/client-pool.js';
 import { publicCodexProTools } from '../../src/codexpro/tool-manifest.js';
 import { createGateway } from '../../src/mcp/gateway.js';
+import { readSandboxInstructions } from '../../src/sandbox/instructions.js';
 import { SbxDriver } from '../../src/sandbox/sbx-driver.js';
 import { SandboxService } from '../../src/sandbox/service.js';
 import { StateDatabase } from '../../src/state/database.js';
@@ -79,6 +80,7 @@ test('routes full shell and private Docker only into a real microVM', async () =
     host: '127.0.0.1',
     idleTimeoutMs: 24 * 60 * 60_000,
     maxBodyBytes: 20 * 1024 * 1024,
+    maxActiveSandboxes: 1,
     port: 0,
     reaperIntervalMs: 60_000,
     sandboxPort: 18_787,
@@ -104,9 +106,18 @@ test('routes full shell and private Docker only into a real microVM', async () =
   const clients = new CodexProClientPool(sandboxes);
   const bashSessions = new BashSessionService(clients, (listener) => sandboxes.onDestroy(listener));
   const tools = publicCodexProTools();
+  const globalInstructions = '# Global sandbox instructions\n\n- Keep work isolated.\n';
+  fs.writeFileSync(path.join(appConfig.dataRoot, 'AGENTS.md'), globalInstructions);
   const gateway = createGateway(appConfig, {
     authProvider: new SingleUserAuthProvider(),
-    controlServer: { bashSessions, codexPro: clients, codexProTools: tools, sandboxes, workspaces },
+    controlServer: {
+      bashSessions,
+      codexPro: clients,
+      codexProTools: tools,
+      readSandboxInstructions: () => readSandboxInstructions(appConfig.dataRoot),
+      sandboxes,
+      workspaces,
+    },
   });
   let sandboxId: string | undefined;
   const hostEscapeMarker = path.join(os.tmpdir(), `chat2shell-host-escape-${randomUUID()}`);
@@ -128,13 +139,27 @@ test('routes full shell and private Docker only into a real microVM', async () =
       'sandbox_id',
     );
 
-    const createResult = await callTool(url, 3, 'sandbox_create', {});
+    const createResult = await callTool(url, 3, 'sandbox_create', { memory: '4g' });
     const created = createResult.structuredContent as {
-      sandbox: { id: string; workspace: { id: string; root: string } };
+      sandbox: { id: string; memory: string | null; workspace: { id: string; root: string } };
+      sandbox_instructions: string;
       status: string;
     };
     expect(created.status).toBe('created');
+    expect(created.sandbox.memory).toBe('4g');
+    expect(created.sandbox_instructions).toBe(globalInstructions);
     sandboxId = created.sandbox.id;
+
+    const opened = await callTool(url, 101, 'sandbox_get', { sandbox_id: sandboxId });
+    expect(
+      (opened.structuredContent as { sandbox_instructions: string }).sandbox_instructions,
+    ).toBe(globalInstructions);
+
+    const overLimit = await callTool(url, 100, 'sandbox_create', {});
+    expect(overLimit.isError).toBe(true);
+    expect((overLimit.content as Array<{ text: string }>)[0]?.text).toMatch(
+      /Active sandbox limit reached/,
+    );
 
     const write = await callTool(url, 4, 'write', {
       content: 'isolated\n',

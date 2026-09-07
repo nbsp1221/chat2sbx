@@ -29,7 +29,7 @@ Each sandbox gets its own shell, approved workspace, CodexPro process, and priva
 - **Capable by default** — run shell commands, install packages, start servers, and use Docker inside the sandbox.
 - **Isolated from the host** — ChatGPT never receives raw host shell, host sudo, or host Docker access.
 - **Explicit workspace access** — arbitrary host paths require approval; clone mode keeps edits private by default.
-- **Built for agent workflows** — stable sandbox/workspace IDs, long-running Bash sessions, and port exposure work across conversations.
+- **Built for agent workflows** — stable sandbox/workspace IDs, long-running Bash sessions, port exposure, and reusable global instructions work across conversations.
 
 ## How it works
 
@@ -123,6 +123,8 @@ sandbox_create
   -> sandbox_destroy when the environment is no longer needed
 ```
 
+`sandbox_create` can optionally set a memory ceiling such as `512m` or `4g`. When reopening an existing sandbox, call `sandbox_get` first so its current state and any global sandbox instructions are loaded.
+
 A typical long-running command looks like:
 
 ```text
@@ -142,6 +144,16 @@ bash_poll
 | `direct`  | Read/write access to one approved host directory | Work that must immediately affect the host checkout |
 
 `clone` is the default for approved host repositories. Use `direct` only when you intentionally want sandbox commands to modify the approved host directory.
+
+## Resource controls and global instructions
+
+Resource controls are optional. By default chat2shell leaves Docker Sandboxes resource sizing unchanged and allows any number of active sandboxes. Operators can:
+
+- pass `memory` to `sandbox_create` with values such as `512m` or `4g`;
+- set `maxActiveSandboxes` in `~/.chat2shell/config.json` or override it with `CHAT2SHELL_MAX_ACTIVE_SANDBOXES`;
+- add `~/.chat2shell/AGENTS.md` to provide global agent instructions returned by `sandbox_create` and `sandbox_get`.
+
+Global instructions are advisory text for agents. They are not copied into a workspace, interpreted as commands, or enforced as security policy. See [Architecture](./docs/architecture.md) for the exact lifecycle and resource semantics.
 
 ## Security model
 
@@ -172,15 +184,20 @@ chat2shell approval reject <id>          Reject a host-path request
 
 The defaults are intentionally small. `.env.example` contains the complete set of environment overrides.
 
-| Variable                        | Default                      | Purpose                                    |
-| ------------------------------- | ---------------------------- | ------------------------------------------ |
-| `CHAT2SHELL_HOST`               | `127.0.0.1`                  | MCP bind address                           |
-| `CHAT2SHELL_PORT`               | `18788`                      | MCP port                                   |
-| `CHAT2SHELL_DATA_ROOT`          | `~/.chat2shell`              | Persistent chat2shell data                 |
-| `CHAT2SHELL_ALLOWED_HOST_ROOTS` | `~/repositories`             | Roots eligible for host workspace approval |
-| `CHAT2SHELL_ENABLE_TUNNEL`      | `1`                          | Set to `0` for local-only mode             |
-| `CHAT2SHELL_TUNNEL_CLIENT`      | `~/.local/bin/tunnel-client` | Secure MCP Tunnel client path              |
-| `CHAT2SHELL_SECRET_DIR`         | `~/.secrets/tunnel-client`   | Tunnel ID/key directory                    |
+| Variable                          | Default                      | Purpose                                    |
+| --------------------------------- | ---------------------------- | ------------------------------------------ |
+| `CHAT2SHELL_HOST`                 | `127.0.0.1`                  | MCP bind address                           |
+| `CHAT2SHELL_PORT`                 | `18788`                      | MCP port                                   |
+| `CHAT2SHELL_DATA_ROOT`            | `~/.chat2shell`              | Persistent chat2shell data                 |
+| `CHAT2SHELL_ALLOWED_HOST_ROOTS`   | `~/repositories`             | Roots eligible for host workspace approval |
+| `CHAT2SHELL_ENABLE_TUNNEL`        | `1`                          | Set to `0` for local-only mode             |
+| `CHAT2SHELL_TUNNEL_CLIENT`        | `~/.local/bin/tunnel-client` | Secure MCP Tunnel client path              |
+| `CHAT2SHELL_SECRET_DIR`           | `~/.secrets/tunnel-client`   | Tunnel ID/key directory                    |
+| `CHAT2SHELL_MAX_ACTIVE_SANDBOXES` | `unlimited`                  | Optional active sandbox limit              |
+
+The same sandbox limit can be stored in `~/.chat2shell/config.json` as `maxActiveSandboxes`; the environment variable takes precedence. `chat2shell status` shows the effective limit and active count. Configuration is read when `chat2shell serve` starts.
+
+Global sandbox instructions live at `~/.chat2shell/AGENTS.md` by default. Changes to that file are read on the next `sandbox_create` or `sandbox_get` and do not require a server restart.
 
 ## Documentation
 

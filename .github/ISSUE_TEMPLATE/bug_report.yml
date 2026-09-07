@@ -41,7 +41,7 @@ body:
       value: |
         - OS:
         - Node.js:
-        - pnpm:
+        - npm:
         - Docker Sandboxes (`sbx`):
         - chat2shell commit/version:
     validations:

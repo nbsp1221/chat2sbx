@@ -8,6 +8,7 @@ import { CodexProClientPool } from '../codexpro/client-pool.js';
 import { publicCodexProTools } from '../codexpro/tool-manifest.js';
 import { type RuntimeConfig, loadRuntimeConfig } from '../config.js';
 import { createGateway } from '../mcp/gateway.js';
+import { readSandboxInstructions } from '../sandbox/instructions.js';
 import { SbxDriver } from '../sandbox/sbx-driver.js';
 import { SandboxService } from '../sandbox/service.js';
 import { StateDatabase } from '../state/database.js';
@@ -106,7 +107,14 @@ async function runRuntime(config: RuntimeConfig): Promise<void> {
     const codexProTools = publicCodexProTools();
     server = createGateway(config, {
       authProvider: new SingleUserAuthProvider(),
-      controlServer: { sandboxes, workspaces, codexPro, bashSessions, codexProTools },
+      controlServer: {
+        sandboxes,
+        workspaces,
+        codexPro,
+        bashSessions,
+        codexProTools,
+        readSandboxInstructions: () => readSandboxInstructions(config.dataRoot),
+      },
     });
     await listen(server, config);
     console.log(`[chat2shell] MCP ready at http://${config.host}:${config.port}/mcp`);
