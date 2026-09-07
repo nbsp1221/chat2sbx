@@ -184,16 +184,19 @@ chat2shell approval reject <id>          Reject a host-path request
 
 The defaults are intentionally small. `.env.example` contains the complete set of environment overrides.
 
-| Variable                          | Default                      | Purpose                                    |
-| --------------------------------- | ---------------------------- | ------------------------------------------ |
-| `CHAT2SHELL_HOST`                 | `127.0.0.1`                  | MCP bind address                           |
-| `CHAT2SHELL_PORT`                 | `18788`                      | MCP port                                   |
-| `CHAT2SHELL_DATA_ROOT`            | `~/.chat2shell`              | Persistent chat2shell data                 |
-| `CHAT2SHELL_ALLOWED_HOST_ROOTS`   | `~/repositories`             | Roots eligible for host workspace approval |
-| `CHAT2SHELL_ENABLE_TUNNEL`        | `1`                          | Set to `0` for local-only mode             |
-| `CHAT2SHELL_TUNNEL_CLIENT`        | `~/.local/bin/tunnel-client` | Secure MCP Tunnel client path              |
-| `CHAT2SHELL_SECRET_DIR`           | `~/.secrets/tunnel-client`   | Tunnel ID/key directory                    |
-| `CHAT2SHELL_MAX_ACTIVE_SANDBOXES` | `unlimited`                  | Optional active sandbox limit              |
+| Variable                          | Default                         | Purpose                                    |
+| --------------------------------- | ------------------------------- | ------------------------------------------ |
+| `CHAT2SHELL_HOST`                 | `127.0.0.1`                     | MCP bind address                           |
+| `CHAT2SHELL_PORT`                 | `18788`                         | MCP port                                   |
+| `CHAT2SHELL_DATA_ROOT`            | `~/.chat2shell`                 | Persistent chat2shell data                 |
+| `CHAT2SHELL_STATE_DIR`            | `<data root>/state`             | Runtime state directory                    |
+| `CHAT2SHELL_WORKSPACE_ROOT`       | `<data root>/workspaces`        | Managed workspace directory                |
+| `CHAT2SHELL_DATABASE_PATH`        | `<state dir>/chat2shell.sqlite` | SQLite state database                      |
+| `CHAT2SHELL_ALLOWED_HOST_ROOTS`   | `~/repositories`                | Roots eligible for host workspace approval |
+| `CHAT2SHELL_ENABLE_TUNNEL`        | `1`                             | Set to `0` for local-only mode             |
+| `CHAT2SHELL_TUNNEL_CLIENT`        | `~/.local/bin/tunnel-client`    | Secure MCP Tunnel client path              |
+| `CHAT2SHELL_SECRET_DIR`           | `~/.secrets/tunnel-client`      | Tunnel ID/key directory                    |
+| `CHAT2SHELL_MAX_ACTIVE_SANDBOXES` | `unlimited`                     | Optional active sandbox limit              |
 
 The same sandbox limit can be stored in `~/.chat2shell/config.json` as `maxActiveSandboxes`; the environment variable takes precedence. `chat2shell status` shows the effective limit and active count. Configuration is read when `chat2shell serve` starts.
 
