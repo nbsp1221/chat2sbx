@@ -1,16 +1,16 @@
 {
-  "name": "chat2shell",
-  "version": "0.1.0",
-  "description": "A private MCP control plane for isolated shell and sandbox access from ChatGPT.",
-  "homepage": "https://github.com/nbsp1221/chat2shell#readme",
-  "bugs": "https://github.com/nbsp1221/chat2shell/issues",
+  "name": "chat2sbx",
+  "version": "0.2.0",
+  "description": "Disposable sandbox computers for ChatGPT, running on your hardware.",
+  "homepage": "https://github.com/nbsp1221/chat2sbx#readme",
+  "bugs": "https://github.com/nbsp1221/chat2sbx/issues",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nbsp1221/chat2shell.git"
+    "url": "git+https://github.com/nbsp1221/chat2sbx.git"
   },
   "bin": {
-    "chat2shell": "dist/cli.mjs"
+    "chat2sbx": "dist/cli.mjs"
   },
   "files": [
     "dist",

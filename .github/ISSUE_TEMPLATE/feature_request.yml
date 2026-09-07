@@ -1,11 +1,11 @@
 name: Feature request
-description: Propose a concrete improvement to chat2shell
+description: Propose a concrete improvement to chat2sbx
 title: '[Feature]: '
 body:
   - type: markdown
     attributes:
       value: |
-        chat2shell intentionally keeps its scope small. Start with the problem and workflow rather than a preferred implementation.
+        chat2sbx intentionally keeps its scope small. Start with the problem and workflow rather than a preferred implementation.
   - type: textarea
     id: problem
     attributes:

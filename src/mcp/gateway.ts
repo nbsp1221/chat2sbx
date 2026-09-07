@@ -96,7 +96,7 @@ export function createGateway(config: AppConfig, dependencies: GatewayDependenci
         return;
       }
       const status = error instanceof Error && error.message === 'payload_too_large' ? 413 : 500;
-      const message = status === 413 ? 'Payload too large' : 'Internal chat2shell error';
+      const message = status === 413 ? 'Payload too large' : 'Internal chat2sbx error';
       sendJson(response, status, {
         error: status === 413 ? 'payload_too_large' : 'internal_error',
         message,

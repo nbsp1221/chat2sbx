@@ -1,12 +1,12 @@
 name: Bug report
-description: Report a reproducible problem in chat2shell
+description: Report a reproducible problem in chat2sbx
 title: '[Bug]: '
 body:
   - type: markdown
     attributes:
       value: |
         Thanks for reporting a bug. Please remove credentials, tokens, private paths, and other sensitive data from logs or examples.
-        For security vulnerabilities, follow https://github.com/nbsp1221/chat2shell/blob/main/SECURITY.md instead of opening a public issue.
+        For security vulnerabilities, follow https://github.com/nbsp1221/chat2sbx/blob/main/SECURITY.md instead of opening a public issue.
   - type: textarea
     id: problem
     attributes:
@@ -43,7 +43,7 @@ body:
         - Node.js:
         - npm:
         - Docker Sandboxes (`sbx`):
-        - chat2shell commit/version:
+        - chat2sbx commit/version:
     validations:
       required: true
   - type: textarea

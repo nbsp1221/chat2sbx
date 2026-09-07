@@ -28,7 +28,7 @@ function withWorkspaceServices<T>(
 }
 
 export function createCli(): CAC {
-  const cli = cac('chat2shell');
+  const cli = cac('chat2sbx');
   cli.version(version);
   cli.help();
 

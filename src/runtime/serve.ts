@@ -39,7 +39,7 @@ async function claimRuntime(config: RuntimeConfig): Promise<void> {
   if (Number.isSafeInteger(existingPid) && existingPid && existingPid > 0) {
     try {
       process.kill(existingPid, 0);
-      throw new Error(`chat2shell is already running with PID ${existingPid}`);
+      throw new Error(`chat2sbx is already running with PID ${existingPid}`);
     } catch (error) {
       if (!isErrno(error, 'ESRCH')) {
         throw error;
@@ -96,7 +96,7 @@ async function runRuntime(config: RuntimeConfig): Promise<void> {
 
   try {
     await driver.assertReady();
-    console.log('[chat2shell] reconciling previous sandbox state');
+    console.log('[chat2sbx] reconciling previous sandbox state');
     const sandboxes = new SandboxService({ database, workspaces, driver, config });
     await sandboxes.reconcile();
 
@@ -117,16 +117,16 @@ async function runRuntime(config: RuntimeConfig): Promise<void> {
       },
     });
     await listen(server, config);
-    console.log(`[chat2shell] MCP ready at http://${config.host}:${config.port}/mcp`);
-    console.log(`[chat2shell] ${codexProTools.length} CodexPro tools are sandbox-scoped`);
+    console.log(`[chat2sbx] MCP ready at http://${config.host}:${config.port}/mcp`);
+    console.log(`[chat2sbx] ${codexProTools.length} CodexPro tools are sandbox-scoped`);
 
     reaper = setInterval(() => {
-      sandboxes.reap().catch((error) => console.error('[chat2shell] reaper failed', error));
+      sandboxes.reap().catch((error) => console.error('[chat2sbx] reaper failed', error));
     }, config.reaperIntervalMs);
     reaper.unref();
 
     if (!config.tunnelEnabled) {
-      console.log('[chat2shell] tunnel disabled');
+      console.log('[chat2sbx] tunnel disabled');
       await stopRequested;
       return;
     }
@@ -137,7 +137,7 @@ async function runRuntime(config: RuntimeConfig): Promise<void> {
     }
     const tunnelProcess = startTunnel(config, tunnelId);
     tunnel = tunnelProcess;
-    console.log('[chat2shell] tunnel client started');
+    console.log('[chat2sbx] tunnel client started');
     const tunnelExit = new Promise<{
       kind: 'tunnel';
       code: number | null;

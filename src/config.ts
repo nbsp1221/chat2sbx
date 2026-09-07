@@ -91,43 +91,43 @@ function readMaxActiveSandboxes(value: string | undefined, fileValue?: number): 
   }
   const limit = Number(value);
   if (!Number.isSafeInteger(limit) || limit < 0 || value.trim() === '') {
-    throw new Error('CHAT2SHELL_MAX_ACTIVE_SANDBOXES must be a non-negative integer or unlimited');
+    throw new Error('CHAT2SBX_MAX_ACTIVE_SANDBOXES must be a non-negative integer or unlimited');
   }
   return limit;
 }
 
 export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
-  const dataRoot = resolvePath(environment.CHAT2SHELL_DATA_ROOT ?? '~/.chat2shell');
+  const dataRoot = resolvePath(environment.CHAT2SBX_DATA_ROOT ?? '~/.chat2sbx');
   const fileConfig = readFileConfig(dataRoot);
-  const stateDir = resolvePath(environment.CHAT2SHELL_STATE_DIR ?? path.join(dataRoot, 'state'));
+  const stateDir = resolvePath(environment.CHAT2SBX_STATE_DIR ?? path.join(dataRoot, 'state'));
   const workspaceRoot = resolvePath(
-    environment.CHAT2SHELL_WORKSPACE_ROOT ?? path.join(dataRoot, 'workspaces'),
+    environment.CHAT2SBX_WORKSPACE_ROOT ?? path.join(dataRoot, 'workspaces'),
   );
   const defaultAllowedRoot = path.join(os.homedir(), 'repositories');
-  const allowedHostRoots = (environment.CHAT2SHELL_ALLOWED_HOST_ROOTS ?? defaultAllowedRoot)
+  const allowedHostRoots = (environment.CHAT2SBX_ALLOWED_HOST_ROOTS ?? defaultAllowedRoot)
     .split(path.delimiter)
     .filter(Boolean)
     .map(resolvePath);
 
   return {
-    host: environment.CHAT2SHELL_HOST ?? '127.0.0.1',
-    port: readPort(environment.CHAT2SHELL_PORT, 18_788, 'CHAT2SHELL_PORT'),
+    host: environment.CHAT2SBX_HOST ?? '127.0.0.1',
+    port: readPort(environment.CHAT2SBX_PORT, 18_788, 'CHAT2SBX_PORT'),
     maxBodyBytes: 20 * 1024 * 1024,
     dataRoot,
     workspaceRoot,
     stateDir,
     databasePath: resolvePath(
-      environment.CHAT2SHELL_DATABASE_PATH ?? path.join(stateDir, 'chat2shell.sqlite'),
+      environment.CHAT2SBX_DATABASE_PATH ?? path.join(stateDir, 'chat2sbx.sqlite'),
     ),
     allowedHostRoots,
     sbxBinary: 'sbx',
-    sandboxTemplate: 'chat2shell-codexpro:0.30.0',
+    sandboxTemplate: 'chat2sbx-codexpro:0.30.0',
     sandboxPort: 18_787,
     idleTimeoutMs: 24 * 60 * 60_000,
     workspaceRetentionMs: 30 * 24 * 60 * 60_000,
     reaperIntervalMs: 60_000,
     maxActiveSandboxes: readMaxActiveSandboxes(
-      environment.CHAT2SHELL_MAX_ACTIVE_SANDBOXES,
+      environment.CHAT2SBX_MAX_ACTIVE_SANDBOXES,
       fileConfig.maxActiveSandboxes,
     ),
   };
@@ -136,13 +136,13 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
 export function loadRuntimeConfig(environment: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const config = loadAppConfig(environment);
   const tunnelSecretDir = resolvePath(
-    environment.CHAT2SHELL_SECRET_DIR ?? '~/.secrets/tunnel-client',
+    environment.CHAT2SBX_SECRET_DIR ?? '~/.secrets/tunnel-client',
   );
   return {
     ...config,
     runtimePidPath: path.join(config.stateDir, 'runtime.pid'),
-    tunnelEnabled: environment.CHAT2SHELL_ENABLE_TUNNEL !== '0',
-    tunnelClient: resolvePath(environment.CHAT2SHELL_TUNNEL_CLIENT ?? '~/.local/bin/tunnel-client'),
+    tunnelEnabled: environment.CHAT2SBX_ENABLE_TUNNEL !== '0',
+    tunnelClient: resolvePath(environment.CHAT2SBX_TUNNEL_CLIENT ?? '~/.local/bin/tunnel-client'),
     tunnelKeyPath: path.join(tunnelSecretDir, 'key'),
     tunnelIdPath: path.join(tunnelSecretDir, 'tunnel-id'),
     tunnelHealthUrlPath: path.join(config.stateDir, 'health.url'),

@@ -14,7 +14,7 @@ Examples include configuration parsing, CLI behavior, tool schema transformation
 
 ## Integration
 
-`test/integration` connects multiple chat2shell components and may use local process resources such as temporary files, SQLite, or loopback HTTP. It must not require Docker Sandboxes (`sbx`) or a real CodexPro microVM.
+`test/integration` connects multiple chat2sbx components and may use local process resources such as temporary files, SQLite, or loopback HTTP. It must not require Docker Sandboxes (`sbx`) or a real CodexPro microVM.
 
 ```bash
 pnpm test:integration
@@ -36,7 +36,7 @@ This is the test boundary used by normal GitHub CI.
 pnpm test:e2e
 ```
 
-E2E tests require a trusted chat2shell host with the `sbx` executable and the `chat2shell-codexpro:0.30.0` template installed. The command fails when those prerequisites are unavailable; it does not silently skip the suite.
+E2E tests require a trusted chat2sbx host with the `sbx` executable and the `chat2sbx-codexpro:0.30.0` template installed. The command fails when those prerequisites are unavailable; it does not silently skip the suite.
 
 Real E2E tests do not run on ordinary GitHub-hosted CI. Run them on a trusted development host before changes that affect the sandbox boundary, lifecycle, workspace modes, CodexPro routing, or port exposure.
 

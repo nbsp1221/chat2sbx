@@ -15,7 +15,7 @@ const sandboxCreateTool: Tool = {
   name: 'sandbox_create',
   title: 'Create or Reuse Sandbox',
   description:
-    'Create an isolated Docker Sandbox, reuse the active sandbox for a workspace, or request host approval for a new host path. A created or reused sandbox includes the current global sandbox instructions when AGENTS.md exists in the chat2shell data directory.',
+    'Create an isolated Docker Sandbox, reuse the active sandbox for a workspace, or request host approval for a new host path. A created or reused sandbox includes the current global sandbox instructions when AGENTS.md exists in the chat2sbx data directory.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -54,7 +54,7 @@ const sandboxListTool: Tool = {
   name: 'sandbox_list',
   title: 'List Sandboxes',
   description:
-    'List running and failed sandboxes owned by the current chat2shell principal. Running IDs can be reused from other conversations; failed sandboxes must be destroyed.',
+    'List running and failed sandboxes owned by the current chat2sbx principal. Running IDs can be reused from other conversations; failed sandboxes must be destroyed.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };
@@ -191,7 +191,7 @@ export interface ControlServerDependencies {
 
 export function createControlServer(dependencies: ControlServerDependencies): Server {
   const server = new Server(
-    { name: 'chat2shell', version },
+    { name: 'chat2sbx', version },
     {
       capabilities: { tools: {} },
       instructions:

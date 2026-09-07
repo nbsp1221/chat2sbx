@@ -42,12 +42,12 @@ export async function setup(config: RuntimeConfig): Promise<void> {
   await execFileAsync(config.sbxBinary, ['version']);
   if (await templateExists(config)) {
     console.log(`Sandbox template ready: ${config.sandboxTemplate}`);
-    console.log('chat2shell setup complete');
+    console.log('chat2sbx setup complete');
     return;
   }
 
-  const bootstrapDirectory = await mkdtemp(path.join(os.tmpdir(), 'chat2shell-template-'));
-  const bootstrapName = `c2s-template-${Date.now()}`;
+  const bootstrapDirectory = await mkdtemp(path.join(os.tmpdir(), 'chat2sbx-template-'));
+  const bootstrapName = `c2sbx-template-${Date.now()}`;
   const codexProVersion = config.sandboxTemplate.split(':').at(-1);
   if (!codexProVersion) {
     throw new Error(`Sandbox template has no CodexPro version: ${config.sandboxTemplate}`);
@@ -85,5 +85,5 @@ export async function setup(config: RuntimeConfig): Promise<void> {
     await rm(bootstrapDirectory, { force: true, recursive: true });
   }
   console.log(`Sandbox template ready: ${config.sandboxTemplate}`);
-  console.log('chat2shell setup complete');
+  console.log('chat2sbx setup complete');
 }

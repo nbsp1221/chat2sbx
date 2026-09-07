@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { normalizeWorkspaceIdentity } from '../../src/codexpro/client-pool.js';
 
-test("replaces CodexPro's internal workspace identity with the public chat2shell identity", () => {
+test("replaces CodexPro's internal workspace identity with the public chat2sbx identity", () => {
   const result = normalizeWorkspaceIdentity(
     {
       content: [{ type: 'text', text: 'Workspace ws_internal selected; ws_internal is ready.' }],

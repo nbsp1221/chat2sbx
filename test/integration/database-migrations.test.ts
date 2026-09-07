@@ -6,9 +6,9 @@ import { expect, onTestFinished, test } from 'vitest';
 import { StateDatabase } from '../../src/state/database.js';
 
 function databasePath(): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-migration-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-migration-'));
   onTestFinished(() => fs.rmSync(root, { force: true, recursive: true }));
-  return path.join(root, 'chat2shell.sqlite');
+  return path.join(root, 'chat2sbx.sqlite');
 }
 
 function version(database: DatabaseSync): number {
@@ -92,7 +92,7 @@ test('rolls back every pending migration and its version when one fails', () => 
   database.close();
 });
 
-test('rejects a database created by a newer chat2shell version', () => {
+test('rejects a database created by a newer chat2sbx version', () => {
   const file = databasePath();
   const database = new DatabaseSync(file);
   database.exec('PRAGMA user_version = 3');

@@ -90,7 +90,7 @@ function sessionId(result: CallToolResult): string {
 }
 
 function cleanupSession(id: string): void {
-  fs.rmSync(`/tmp/chat2shell-bash/${id}`, { recursive: true, force: true });
+  fs.rmSync(`/tmp/chat2sbx-bash/${id}`, { recursive: true, force: true });
 }
 
 function sessionOutput(result: CallToolResult): string {
@@ -102,7 +102,7 @@ function sessionOutput(result: CallToolResult): string {
 }
 
 async function waitForSessionOutput(id: string, expected: string): Promise<void> {
-  const outputPath = `/tmp/chat2shell-bash/${id}/output.log`;
+  const outputPath = `/tmp/chat2sbx-bash/${id}/output.log`;
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (fs.existsSync(outputPath) && fs.readFileSync(outputPath, 'utf8').includes(expected)) {
       return;
@@ -115,7 +115,7 @@ async function waitForSessionOutput(id: string, expected: string): Promise<void>
 }
 
 test('returns exited output for a short command', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const sessions = new BashSessionService(new LocalBashExecutor(cwd));
 
@@ -136,7 +136,7 @@ test('returns exited output for a short command', async () => {
 });
 
 test('preserves the session handle when the initial snapshot fails', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const executor = new FailOneCallExecutor(cwd, 2);
   const sessions = new BashSessionService(executor);
@@ -198,7 +198,7 @@ test('does not return a stale handle after concurrent sandbox destruction', asyn
 });
 
 test('still rejects when the launch itself fails', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const sessions = new BashSessionService(new FailOneCallExecutor(cwd, 1));
 
@@ -208,7 +208,7 @@ test('still rejects when the launch itself fails', async () => {
 });
 
 test('returns a running session and long-polls for only new output', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const sessions = new BashSessionService(new LocalBashExecutor(cwd));
 
@@ -231,7 +231,7 @@ test('returns a running session and long-polls for only new output', async () =>
 });
 
 test('stops the process group for a running session', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const sessions = new BashSessionService(new LocalBashExecutor(cwd));
 
@@ -248,7 +248,7 @@ test('stops the process group for a running session', async () => {
 });
 
 test('applies an execution timeout only when requested', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const sessions = new BashSessionService(new LocalBashExecutor(cwd));
 
@@ -265,7 +265,7 @@ test('applies an execution timeout only when requested', async () => {
 });
 
 test('returns large output in bounded consecutive chunks', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const sessions = new BashSessionService(new LocalBashExecutor(cwd));
 
@@ -284,7 +284,7 @@ test('returns large output in bounded consecutive chunks', async () => {
 });
 
 test('serializes concurrent polls without duplicating or losing output', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const sessions = new BashSessionService(new SerializedBashExecutor(cwd));
   const started = await sessions.start('owner', 'sandbox', {
@@ -315,7 +315,7 @@ test('serializes concurrent polls without duplicating or losing output', async (
 });
 
 test('preserves UTF-8 characters across output chunks', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const sessions = new BashSessionService(new LocalBashExecutor(cwd));
   const expected = `${'a'.repeat(59_999)}😀`;
@@ -335,7 +335,7 @@ test('preserves UTF-8 characters across output chunks', async () => {
 });
 
 test('waits for completion bytes instead of spinning on partial UTF-8', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const sessions = new BashSessionService(new LocalBashExecutor(cwd));
   const started = await sessions.start('owner', 'sandbox', {
@@ -353,7 +353,7 @@ test('waits for completion bytes instead of spinning on partial UTF-8', async ()
 });
 
 test('returns exact sandbox output without cross-chunk redaction', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   const redactPerCall = (output: string) =>
@@ -377,7 +377,7 @@ test('returns exact sandbox output without cross-chunk redaction', async () => {
 });
 
 test('forgets sessions when their sandbox is destroyed', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-bash-test-'));
   let destroyListener: ((sandboxId: string) => void) | undefined;
   const sessions = new BashSessionService(new LocalBashExecutor(cwd), (listener) => {
     destroyListener = listener;

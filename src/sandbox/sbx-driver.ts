@@ -64,7 +64,7 @@ export class SbxDriver implements SandboxDriver {
         `${image.repository}:${image.tag}`.replace(/^docker\.io\/library\//, '') === requested,
     );
     if (!present) {
-      throw new Error(`Missing sandbox template ${this.#template}. Run chat2shell setup first.`);
+      throw new Error(`Missing sandbox template ${this.#template}. Run chat2sbx setup first.`);
     }
   }
 
