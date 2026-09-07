@@ -1,6 +1,6 @@
 # Code of Conduct
 
-chat2shell aims to be a useful, technically rigorous, and welcoming open-source project.
+chat2sbx aims to be a useful, technically rigorous, and welcoming open-source project.
 
 ## Expected behavior
 

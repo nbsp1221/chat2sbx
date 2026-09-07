@@ -4,7 +4,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 const DEFAULT_YIELD_MS = 10_000;
 const MAX_YIELD_MS = 60_000;
 const OUTPUT_CHUNK_BYTES = 60_000;
-const SESSION_ROOT = '/tmp/chat2shell-bash';
+const SESSION_ROOT = '/tmp/chat2sbx-bash';
 
 interface CodexProExecutor {
   call(

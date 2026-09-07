@@ -19,7 +19,7 @@ async function listen(server: http.Server): Promise<number> {
 function config(): AppConfig {
   return {
     allowedHostRoots: ['/tmp'],
-    dataRoot: '/tmp/chat2shell',
+    dataRoot: '/tmp/chat2sbx',
     databasePath: ':memory:',
     host: '127.0.0.1',
     idleTimeoutMs: 1_000,
@@ -29,9 +29,9 @@ function config(): AppConfig {
     sandboxPort: 18_787,
     sandboxTemplate: 'test:latest',
     sbxBinary: 'sbx',
-    stateDir: '/tmp/chat2shell/state',
+    stateDir: '/tmp/chat2sbx/state',
     workspaceRetentionMs: 10_000,
-    workspaceRoot: '/tmp/chat2shell/workspaces',
+    workspaceRoot: '/tmp/chat2sbx/workspaces',
   };
 }
 
@@ -116,7 +116,7 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
                 kind: 'managed' as const,
                 mode: 'managed' as const,
                 ownerId: 'local-owner',
-                root: '/tmp/chat2shell/workspaces/ws_test',
+                root: '/tmp/chat2sbx/workspaces/ws_test',
                 status: 'approved' as const,
               },
             },
@@ -143,7 +143,7 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
               kind: 'managed' as const,
               mode: 'managed' as const,
               ownerId: 'local-owner',
-              root: '/tmp/chat2shell/workspaces/ws_test',
+              root: '/tmp/chat2sbx/workspaces/ws_test',
               status: 'approved' as const,
             },
           };

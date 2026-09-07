@@ -122,7 +122,7 @@ class CodexProSession {
       {
         protocolVersion: '2025-06-18',
         capabilities: {},
-        clientInfo: { name: 'chat2shell', version },
+        clientInfo: { name: 'chat2sbx', version },
       },
       false,
     );

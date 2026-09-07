@@ -119,7 +119,7 @@ function sandboxFrom(result: SandboxCreateResult): SandboxSummary {
 }
 
 test('explicit sandbox ids are reusable and one active sandbox is kept per workspace', async () => {
-  const { driver, service, workspaces } = fixture('chat2shell-sandbox-');
+  const { driver, service, workspaces } = fixture('chat2sbx-sandbox-');
 
   const firstResult = await service.create('owner', {});
   expect(firstResult.status).toBe('created');
@@ -140,7 +140,7 @@ test('explicit sandbox ids are reusable and one active sandbox is kept per works
 });
 
 test('applies an optional active sandbox limit without blocking reuse or later creation', async () => {
-  const { appConfig, database, driver, workspaces } = fixture('chat2shell-limit-');
+  const { appConfig, database, driver, workspaces } = fixture('chat2sbx-limit-');
   const limited = new SandboxService({
     config: { ...appConfig, maxActiveSandboxes: 1 },
     database,
@@ -162,7 +162,7 @@ test('applies an optional active sandbox limit without blocking reuse or later c
 });
 
 test('passes an explicit memory limit and rejects changing it on reuse', async () => {
-  const { driver, service } = fixture('chat2shell-memory-');
+  const { driver, service } = fixture('chat2sbx-memory-');
   const first = sandboxFrom(await service.create('owner', { memory: '4g' }));
 
   expect(first.memory).toBe('4g');
@@ -180,7 +180,7 @@ test('passes an explicit memory limit and rejects changing it on reuse', async (
 });
 
 test('host workspace requests stop at approval_required', async () => {
-  const { base, driver, service } = fixture('chat2shell-approval-');
+  const { base, driver, service } = fixture('chat2sbx-approval-');
   const repository = path.join(base, 'allowed', 'repo');
   fs.mkdirSync(repository, { recursive: true });
 
@@ -194,7 +194,7 @@ test('host workspace requests stop at approval_required', async () => {
 });
 
 test('exposes a running sandbox port on an automatically assigned host port', async () => {
-  const { service } = fixture('chat2shell-expose-');
+  const { service } = fixture('chat2sbx-expose-');
   const created = sandboxFrom(await service.create('owner', {}));
 
   await expect(service.expose('owner', created.id, 3_000)).resolves.toEqual({
@@ -206,7 +206,7 @@ test('exposes a running sandbox port on an automatically assigned host port', as
 });
 
 test('an unavailable runtime becomes an explicit failed sandbox without automatic restart', async () => {
-  const { driver, service } = fixture('chat2shell-failed-');
+  const { driver, service } = fixture('chat2sbx-failed-');
   const created = sandboxFrom(await service.create('owner', {}));
   driver.healthy = false;
 
@@ -219,7 +219,7 @@ test('an unavailable runtime becomes an explicit failed sandbox without automati
 
 test('every completed tool call renews the idle deadline without an absolute lifetime', async () => {
   let now = 1_000;
-  const { appConfig, service } = fixture('chat2shell-activity-', () => now);
+  const { appConfig, service } = fixture('chat2sbx-activity-', () => now);
   const created = sandboxFrom(await service.create('owner', {}));
 
   for (let call = 0; call < 30; call += 1) {
@@ -239,7 +239,7 @@ test('every completed tool call renews the idle deadline without an absolute lif
 
 test('idle removal retains its managed workspace for the configured period', async () => {
   let now = 1_000;
-  const { appConfig, service, workspaces } = fixture('chat2shell-expiry-', () => now);
+  const { appConfig, service, workspaces } = fixture('chat2sbx-expiry-', () => now);
   const created = sandboxFrom(await service.create('owner', {}));
   now += appConfig.idleTimeoutMs;
 
@@ -252,7 +252,7 @@ test('idle removal retains its managed workspace for the configured period', asy
 
 test('idle cleanup rechecks activity after an in-flight call', async () => {
   let now = 1_000;
-  const { appConfig, service } = fixture('chat2shell-reaper-race-', () => now);
+  const { appConfig, service } = fixture('chat2sbx-reaper-race-', () => now);
   const created = sandboxFrom(await service.create('owner', {}));
   let finishCall: (() => void) | undefined;
   const inFlightCall = service.withReady('owner', created.id, async () => {
@@ -277,7 +277,7 @@ test('idle cleanup rechecks activity after an in-flight call', async () => {
 });
 
 test('a controller restart invalidates runtimes that the new controller does not own', async () => {
-  const { appConfig, database, driver, service, workspaces } = fixture('chat2shell-reconcile-');
+  const { appConfig, database, driver, service, workspaces } = fixture('chat2sbx-reconcile-');
   const created = sandboxFrom(await service.create('owner', {}));
   expect(created.status).toBe('running');
 
@@ -291,5 +291,5 @@ test('a controller restart invalidates runtimes that the new controller does not
 
   expect(driver.removeCalls).toBe(1);
   expect(restartedController.list('owner')[0]?.status).toBe('failed');
-  expect(restartedController.list('owner')[0]?.error ?? '').toMatch(/chat2shell restarted/);
+  expect(restartedController.list('owner')[0]?.error ?? '').toMatch(/chat2sbx restarted/);
 });

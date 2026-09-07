@@ -1,6 +1,6 @@
 # Roadmap
 
-chat2shell currently focuses on giving ChatGPT a capable shell inside disposable Docker Sandbox microVMs while keeping the host outside the execution boundary.
+chat2sbx currently focuses on giving ChatGPT a capable shell inside disposable Docker Sandbox microVMs while keeping the host outside the execution boundary.
 
 The intended next product directions are:
 

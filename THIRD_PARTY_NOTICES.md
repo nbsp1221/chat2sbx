@@ -2,7 +2,7 @@
 
 ## CodexPro
 
-chat2shell includes a static copy of the supported tool descriptors from CodexPro 0.30.0.
+chat2sbx includes a static copy of the supported tool descriptors from CodexPro 0.30.0.
 
 CodexPro is licensed under the MIT License:
 

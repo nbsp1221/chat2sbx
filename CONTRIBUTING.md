@@ -1,8 +1,8 @@
-# Contributing to chat2shell
+# Contributing to chat2sbx
 
 Thanks for taking the time to contribute.
 
-chat2shell is intentionally small and security-sensitive. Prefer focused changes that solve a concrete problem without expanding the execution boundary unnecessarily.
+chat2sbx is intentionally small and security-sensitive. Prefer focused changes that solve a concrete problem without expanding the execution boundary unnecessarily.
 
 ## Before you start
 
@@ -39,7 +39,7 @@ pnpm check
 The test suite is intentionally separated by boundary:
 
 - `pnpm test:unit` — small code units with no external resources
-- `pnpm test:integration` — multiple chat2shell components using local resources only
+- `pnpm test:integration` — multiple chat2sbx components using local resources only
 - `pnpm test:e2e` — real Docker Sandbox microVMs, CodexPro, private Docker, and port exposure
 
 Normal CI runs unit and integration tests. Run E2E tests on a trusted host when changing sandbox lifecycle, workspace modes, CodexPro routing, Bash sessions, or port exposure.
@@ -72,4 +72,4 @@ Avoid duplicating system invariants across documents:
 
 ## Scope discipline
 
-chat2shell deliberately does not try to be a general-purpose orchestrator. New abstractions, background services, persistence layers, or policy systems should have a demonstrated need before they are added.
+chat2sbx deliberately does not try to be a general-purpose orchestrator. New abstractions, background services, persistence layers, or policy systems should have a demonstrated need before they are added.

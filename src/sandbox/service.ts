@@ -255,7 +255,7 @@ export class SandboxService {
         this.#database.saveSandbox({
           ...sandbox,
           status: 'failed',
-          error: 'chat2shell restarted; destroy this sandbox and create a new one',
+          error: 'chat2sbx restarted; destroy this sandbox and create a new one',
           destroyedAt,
           endpoint: undefined,
           authToken: undefined,

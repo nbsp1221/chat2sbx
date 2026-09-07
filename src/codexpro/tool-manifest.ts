@@ -84,11 +84,11 @@ export function codexProToolManifest(): readonly Tool[] {
 export function scopedCodexProTool(tool: Tool): Tool {
   const properties = tool.inputSchema.properties ?? {};
   if ('sandbox_id' in properties) {
-    throw new Error(`CodexPro tool conflicts with the chat2shell routing field: ${tool.name}`);
+    throw new Error(`CodexPro tool conflicts with the chat2sbx routing field: ${tool.name}`);
   }
   const scoped: Tool = {
     ...tool,
-    description: `${tool.description ?? tool.name} Runs only inside the selected chat2shell sandbox.`,
+    description: `${tool.description ?? tool.name} Runs only inside the selected chat2sbx sandbox.`,
     inputSchema: {
       ...tool.inputSchema,
       properties: {

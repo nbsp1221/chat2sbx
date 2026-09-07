@@ -16,12 +16,12 @@ afterEach(async () => {
 });
 
 async function environment(): Promise<{ hostRoot: string; root: string }> {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'chat2shell-cli-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'chat2sbx-cli-'));
   const hostRoot = path.join(root, 'repositories');
   await mkdir(hostRoot);
   roots.push(root);
-  vi.stubEnv('CHAT2SHELL_DATA_ROOT', path.join(root, 'data'));
-  vi.stubEnv('CHAT2SHELL_ALLOWED_HOST_ROOTS', hostRoot);
+  vi.stubEnv('CHAT2SBX_DATA_ROOT', path.join(root, 'data'));
+  vi.stubEnv('CHAT2SBX_ALLOWED_HOST_ROOTS', hostRoot);
   return { hostRoot, root };
 }
 
@@ -32,13 +32,13 @@ test('executes workspace list and add commands', async () => {
   const output: string[] = [];
   vi.spyOn(console, 'log').mockImplementation((message) => output.push(String(message)));
 
-  await runCli(['node', 'chat2shell', 'workspace', 'list']);
+  await runCli(['node', 'chat2sbx', 'workspace', 'list']);
   expect(JSON.parse(output.pop() ?? '')).toEqual([]);
 
-  await runCli(['node', 'chat2shell', 'workspace', 'add', repository, '--mode', 'direct']);
+  await runCli(['node', 'chat2sbx', 'workspace', 'add', repository, '--mode', 'direct']);
   expect(JSON.parse(output.pop() ?? '')).toMatchObject({ mode: 'direct', root: repository });
 
-  await runCli(['node', 'chat2shell', 'workspace', 'list']);
+  await runCli(['node', 'chat2sbx', 'workspace', 'list']);
   expect(JSON.parse(output.pop() ?? '')).toEqual([
     expect.objectContaining({ mode: 'direct', root: repository }),
   ]);
@@ -63,26 +63,26 @@ test('executes approval list, approve, and reject commands', async () => {
   const output: string[] = [];
   vi.spyOn(console, 'log').mockImplementation((message) => output.push(String(message)));
 
-  await runCli(['node', 'chat2shell', 'approval', 'list']);
+  await runCli(['node', 'chat2sbx', 'approval', 'list']);
   expect(JSON.parse(output.pop() ?? '')).toHaveLength(2);
 
-  await runCli(['node', 'chat2shell', 'approval', 'approve', approve.id]);
+  await runCli(['node', 'chat2sbx', 'approval', 'approve', approve.id]);
   expect(JSON.parse(output.pop() ?? '')).toMatchObject({ mode: 'clone', root: approvePath });
 
-  await runCli(['node', 'chat2shell', 'approval', 'reject', reject.id]);
+  await runCli(['node', 'chat2sbx', 'approval', 'reject', reject.id]);
   expect(JSON.parse(output.pop() ?? '')).toMatchObject({ id: reject.id, status: 'rejected' });
 });
 
 test('rejects unknown commands and management actions', async () => {
   await environment();
 
-  await expect(runCli(['node', 'chat2shell', 'does-not-exist'])).rejects.toThrow(
+  await expect(runCli(['node', 'chat2sbx', 'does-not-exist'])).rejects.toThrow(
     'Unknown command: does-not-exist',
   );
-  await expect(runCli(['node', 'chat2shell', 'workspace', 'remove'])).rejects.toThrow(
+  await expect(runCli(['node', 'chat2sbx', 'workspace', 'remove'])).rejects.toThrow(
     'Unknown workspace action: remove',
   );
-  await expect(runCli(['node', 'chat2shell', 'approval', 'approve'])).rejects.toThrow(
+  await expect(runCli(['node', 'chat2sbx', 'approval', 'approve'])).rejects.toThrow(
     'approval approve requires an ID',
   );
 });

@@ -1,13 +1,13 @@
-<h1 align="center">chat2shell</h1>
+<h1 align="center">chat2sbx</h1>
 
-<p align="center"><strong>Give ChatGPT a real shell and private Docker engine without exposing your host shell or host Docker daemon.</strong></p>
+<p align="center"><strong>Give ChatGPT a computer you can safely throw away.</strong></p>
 
 <p align="center">
-  <a href="https://github.com/nbsp1221/chat2shell/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nbsp1221/chat2shell/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-  <a href="https://www.npmjs.com/package/chat2shell"><img alt="npm" src="https://img.shields.io/npm/v/chat2shell?style=flat-square&logo=npm"></a>
+  <a href="https://github.com/nbsp1221/chat2sbx/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nbsp1221/chat2sbx/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://www.npmjs.com/package/chat2sbx"><img alt="npm" src="https://img.shields.io/npm/v/chat2sbx?style=flat-square&logo=npm"></a>
   <a href="https://nodejs.org/"><img alt="Node.js >=24" src="https://img.shields.io/badge/Node.js-%3E%3D24-339933?style=flat-square&logo=nodedotjs&logoColor=white"></a>
   <a href="https://docs.docker.com/ai/sandboxes/"><img alt="Docker Sandboxes" src="https://img.shields.io/badge/isolation-Docker%20Sandboxes-2496ED?style=flat-square&logo=docker&logoColor=white"></a>
-  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/nbsp1221/chat2shell?style=flat-square"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/nbsp1221/chat2sbx?style=flat-square"></a>
 </p>
 
 <p align="center">
@@ -18,9 +18,9 @@
   <a href="./ROADMAP.md">Roadmap</a>
 </p>
 
-## What is chat2shell?
+## What is chat2sbx?
 
-`chat2shell` is a lightweight MCP control plane that gives ChatGPT a capable development environment inside disposable [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) microVMs.
+`chat2sbx` is a lightweight MCP control plane that gives ChatGPT a capable development environment inside disposable [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) microVMs.
 
 Each sandbox gets its own shell, approved workspace, CodexPro process, and private Docker Engine. The host shell and host Docker daemon stay outside the execution boundary.
 
@@ -41,7 +41,7 @@ ChatGPT
 Secure MCP Tunnel
   │
   ▼
-chat2shell (host, loopback only)
+chat2sbx (host, loopback only)
   │
   ├─ workspace / approval / sandbox registry
   │
@@ -62,10 +62,10 @@ The diagram is intentionally simplified. See [Architecture](./docs/architecture.
 
 ## Quick start
 
-### 1. Install chat2shell
+### 1. Install chat2sbx
 
 ```bash
-npm install --global chat2shell
+npm install --global chat2sbx
 ```
 
 ### 2. Prepare the sandbox template
@@ -73,21 +73,21 @@ npm install --global chat2shell
 Start without a tunnel first to verify the local runtime:
 
 ```bash
-CHAT2SHELL_ENABLE_TUNNEL=0 chat2shell setup
+CHAT2SBX_ENABLE_TUNNEL=0 chat2sbx setup
 ```
 
-`setup` checks Docker Sandboxes and creates the pinned `chat2shell-codexpro:0.30.0` template when needed.
+`setup` checks Docker Sandboxes and creates the pinned `chat2sbx-codexpro:0.30.0` template when needed.
 
 ### 3. Start the MCP server
 
 ```bash
-CHAT2SHELL_ENABLE_TUNNEL=0 chat2shell serve
+CHAT2SBX_ENABLE_TUNNEL=0 chat2sbx serve
 ```
 
 In another terminal:
 
 ```bash
-CHAT2SHELL_ENABLE_TUNNEL=0 chat2shell status
+CHAT2SBX_ENABLE_TUNNEL=0 chat2sbx status
 ```
 
 The local MCP endpoint binds to loopback by default.
@@ -97,11 +97,11 @@ The local MCP endpoint binds to loopback by default.
 Follow OpenAI's [Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels), configure the tunnel client, tunnel ID, and key file, then run:
 
 ```bash
-chat2shell setup
-chat2shell serve
+chat2sbx setup
+chat2sbx serve
 ```
 
-By default chat2shell expects:
+By default chat2sbx expects:
 
 ```text
 Tunnel client   ~/.local/bin/tunnel-client
@@ -139,7 +139,7 @@ bash_poll
 
 | Mode      | Host interaction                                 | Best for                                            |
 | --------- | ------------------------------------------------ | --------------------------------------------------- |
-| `managed` | chat2shell-owned persistent workspace            | Disposable or standalone agent work                 |
+| `managed` | chat2sbx-owned persistent workspace              | Disposable or standalone agent work                 |
 | `clone`   | Private clone of an approved host repository     | Safe default for existing repositories              |
 | `direct`  | Read/write access to one approved host directory | Work that must immediately affect the host checkout |
 
@@ -147,20 +147,20 @@ bash_poll
 
 ## Resource controls and global instructions
 
-Resource controls are optional. By default chat2shell leaves Docker Sandboxes resource sizing unchanged and allows any number of active sandboxes. Operators can:
+Resource controls are optional. By default chat2sbx leaves Docker Sandboxes resource sizing unchanged and allows any number of active sandboxes. Operators can:
 
 - pass `memory` to `sandbox_create` with values such as `512m` or `4g`;
-- set `maxActiveSandboxes` in `~/.chat2shell/config.json` or override it with `CHAT2SHELL_MAX_ACTIVE_SANDBOXES`;
-- add `~/.chat2shell/AGENTS.md` to provide global agent instructions returned by `sandbox_create` and `sandbox_get`.
+- set `maxActiveSandboxes` in `~/.chat2sbx/config.json` or override it with `CHAT2SBX_MAX_ACTIVE_SANDBOXES`;
+- add `~/.chat2sbx/AGENTS.md` to provide global agent instructions returned by `sandbox_create` and `sandbox_get`.
 
 Global instructions are advisory text for agents. They are not copied into a workspace, interpreted as commands, or enforced as security policy. See [Architecture](./docs/architecture.md) for the exact lifecycle and resource semantics.
 
 ## Security model
 
-chat2shell is designed around a simple boundary: **the agent is powerful inside the microVM, not on the host.**
+chat2sbx is designed around a simple boundary: **the agent is powerful inside the microVM, not on the host.**
 
 - CodexPro and unrestricted Bash run inside Docker Sandboxes, never directly on the host.
-- Host paths are not mounted unless they are managed by chat2shell or explicitly approved.
+- Host paths are not mounted unless they are managed by chat2sbx or explicitly approved.
 - The MCP server has no built-in authentication and binds to loopback by default. Do not expose it directly to an untrusted network.
 - `sandbox_expose` publishes a sandbox port without adding authentication; treat the exposed service accordingly.
 - Tunnel credentials and internal CodexPro bearer tokens are not returned through MCP.
@@ -170,37 +170,37 @@ Read [Architecture](./docs/architecture.md) for the canonical technical model an
 ## CLI
 
 ```text
-chat2shell setup                         Check prerequisites and prepare the sandbox template
-chat2shell serve                         Run the MCP gateway and tunnel client in the foreground
-chat2shell status                        Show service, MCP, and tunnel readiness
-chat2shell workspace list                List known workspaces
-chat2shell workspace add <path>          Register a host workspace
-chat2shell approval list                 List pending host-path approvals
-chat2shell approval approve <id>         Approve a host-path request
-chat2shell approval reject <id>          Reject a host-path request
+chat2sbx setup                         Check prerequisites and prepare the sandbox template
+chat2sbx serve                         Run the MCP gateway and tunnel client in the foreground
+chat2sbx status                        Show service, MCP, and tunnel readiness
+chat2sbx workspace list                List known workspaces
+chat2sbx workspace add <path>          Register a host workspace
+chat2sbx approval list                 List pending host-path approvals
+chat2sbx approval approve <id>         Approve a host-path request
+chat2sbx approval reject <id>          Reject a host-path request
 ```
 
 ## Configuration
 
 The defaults are intentionally small. `.env.example` contains the complete set of environment overrides.
 
-| Variable                          | Default                         | Purpose                                    |
-| --------------------------------- | ------------------------------- | ------------------------------------------ |
-| `CHAT2SHELL_HOST`                 | `127.0.0.1`                     | MCP bind address                           |
-| `CHAT2SHELL_PORT`                 | `18788`                         | MCP port                                   |
-| `CHAT2SHELL_DATA_ROOT`            | `~/.chat2shell`                 | Persistent chat2shell data                 |
-| `CHAT2SHELL_STATE_DIR`            | `<data root>/state`             | Runtime state directory                    |
-| `CHAT2SHELL_WORKSPACE_ROOT`       | `<data root>/workspaces`        | Managed workspace directory                |
-| `CHAT2SHELL_DATABASE_PATH`        | `<state dir>/chat2shell.sqlite` | SQLite state database                      |
-| `CHAT2SHELL_ALLOWED_HOST_ROOTS`   | `~/repositories`                | Roots eligible for host workspace approval |
-| `CHAT2SHELL_ENABLE_TUNNEL`        | `1`                             | Set to `0` for local-only mode             |
-| `CHAT2SHELL_TUNNEL_CLIENT`        | `~/.local/bin/tunnel-client`    | Secure MCP Tunnel client path              |
-| `CHAT2SHELL_SECRET_DIR`           | `~/.secrets/tunnel-client`      | Tunnel ID/key directory                    |
-| `CHAT2SHELL_MAX_ACTIVE_SANDBOXES` | `unlimited`                     | Optional active sandbox limit              |
+| Variable                        | Default                       | Purpose                                    |
+| ------------------------------- | ----------------------------- | ------------------------------------------ |
+| `CHAT2SBX_HOST`                 | `127.0.0.1`                   | MCP bind address                           |
+| `CHAT2SBX_PORT`                 | `18788`                       | MCP port                                   |
+| `CHAT2SBX_DATA_ROOT`            | `~/.chat2sbx`                 | Persistent chat2sbx data                   |
+| `CHAT2SBX_STATE_DIR`            | `<data root>/state`           | Runtime state directory                    |
+| `CHAT2SBX_WORKSPACE_ROOT`       | `<data root>/workspaces`      | Managed workspace directory                |
+| `CHAT2SBX_DATABASE_PATH`        | `<state dir>/chat2sbx.sqlite` | SQLite state database                      |
+| `CHAT2SBX_ALLOWED_HOST_ROOTS`   | `~/repositories`              | Roots eligible for host workspace approval |
+| `CHAT2SBX_ENABLE_TUNNEL`        | `1`                           | Set to `0` for local-only mode             |
+| `CHAT2SBX_TUNNEL_CLIENT`        | `~/.local/bin/tunnel-client`  | Secure MCP Tunnel client path              |
+| `CHAT2SBX_SECRET_DIR`           | `~/.secrets/tunnel-client`    | Tunnel ID/key directory                    |
+| `CHAT2SBX_MAX_ACTIVE_SANDBOXES` | `unlimited`                   | Optional active sandbox limit              |
 
-The same sandbox limit can be stored in `~/.chat2shell/config.json` as `maxActiveSandboxes`; the environment variable takes precedence. `chat2shell status` shows the effective limit and active count. Configuration is read when `chat2shell serve` starts.
+The same sandbox limit can be stored in `~/.chat2sbx/config.json` as `maxActiveSandboxes`; the environment variable takes precedence. `chat2sbx status` shows the effective limit and active count. Configuration is read when `chat2sbx serve` starts.
 
-Global sandbox instructions live at `~/.chat2shell/AGENTS.md` by default. Changes to that file are read on the next `sandbox_create` or `sandbox_get` and do not require a server restart.
+Global sandbox instructions live at `~/.chat2sbx/AGENTS.md` by default. Changes to that file are read on the next `sandbox_create` or `sandbox_get` and do not require a server restart.
 
 ## Documentation
 
@@ -215,7 +215,7 @@ Global sandbox instructions live at `~/.chat2shell/AGENTS.md` by default. Change
 
 ## Project status
 
-chat2shell is early-stage software. The core sandbox boundary and workflow are usable, but interfaces may still change as the project is tested with real users.
+chat2sbx is early-stage software. The core sandbox boundary and workflow are usable, but interfaces may still change as the project is tested with real users.
 
 If you try it, bug reports and concrete workflow feedback are especially useful. Use the repository's issue templates so reports include enough context to reproduce the problem.
 

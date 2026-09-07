@@ -70,7 +70,7 @@ async function callTool(
 
 test('routes full shell and private Docker only into a real microVM', async () => {
   requireSbx();
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-e2e-'));
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-e2e-'));
   const allowedRoot = path.join(base, 'host');
   fs.mkdirSync(allowedRoot);
   const appConfig: AppConfig = {
@@ -84,7 +84,7 @@ test('routes full shell and private Docker only into a real microVM', async () =
     port: 0,
     reaperIntervalMs: 60_000,
     sandboxPort: 18_787,
-    sandboxTemplate: 'chat2shell-codexpro:0.30.0',
+    sandboxTemplate: 'chat2sbx-codexpro:0.30.0',
     sbxBinary: 'sbx',
     stateDir: path.join(base, 'data', 'state'),
     workspaceRetentionMs: 30 * 24 * 60 * 60_000,
@@ -120,7 +120,7 @@ test('routes full shell and private Docker only into a real microVM', async () =
     },
   });
   let sandboxId: string | undefined;
-  const hostEscapeMarker = path.join(os.tmpdir(), `chat2shell-host-escape-${randomUUID()}`);
+  const hostEscapeMarker = path.join(os.tmpdir(), `chat2sbx-host-escape-${randomUUID()}`);
 
   try {
     await driver.assertReady();
@@ -226,7 +226,7 @@ test('routes full shell and private Docker only into a real microVM', async () =
 
     const preview = await callTool(url, 11, 'bash', {
       command:
-        'nohup node -e \'require("http").createServer((_request, response) => response.end("sandbox-preview")).listen(3000, "0.0.0.0")\' >/tmp/chat2shell-preview.log 2>&1 </dev/null &',
+        'nohup node -e \'require("http").createServer((_request, response) => response.end("sandbox-preview")).listen(3000, "0.0.0.0")\' >/tmp/chat2sbx-preview.log 2>&1 </dev/null &',
       sandbox_id: sandboxId,
     });
     expect(preview.isError, JSON.stringify(preview)).not.toBe(true);

@@ -15,16 +15,16 @@ afterEach(async () => {
 });
 
 test('reports a stopped service when no live PID exists', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'chat2shell-status-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'chat2sbx-status-'));
   roots.push(root);
   const output: string[] = [];
   vi.spyOn(console, 'log').mockImplementation((message) => output.push(String(message)));
 
   const ready = await status(
     loadRuntimeConfig({
-      CHAT2SHELL_DATA_ROOT: path.join(root, '.chat2shell'),
-      CHAT2SHELL_ENABLE_TUNNEL: '0',
-      CHAT2SHELL_MAX_ACTIVE_SANDBOXES: '2',
+      CHAT2SBX_DATA_ROOT: path.join(root, '.chat2sbx'),
+      CHAT2SBX_ENABLE_TUNNEL: '0',
+      CHAT2SBX_MAX_ACTIVE_SANDBOXES: '2',
     }),
   );
 
@@ -33,7 +33,7 @@ test('reports a stopped service when no live PID exists', async () => {
 });
 
 test('checks the running process and MCP health', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'chat2shell-status-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'chat2sbx-status-'));
   roots.push(root);
   const server = http.createServer((_request, response) => {
     response.writeHead(200).end('{"status":"ok"}');
@@ -46,9 +46,9 @@ test('checks the running process and MCP health', async () => {
   }
 
   const config = loadRuntimeConfig({
-    CHAT2SHELL_DATA_ROOT: path.join(root, '.chat2shell'),
-    CHAT2SHELL_ENABLE_TUNNEL: '0',
-    CHAT2SHELL_PORT: String(address.port),
+    CHAT2SBX_DATA_ROOT: path.join(root, '.chat2sbx'),
+    CHAT2SBX_ENABLE_TUNNEL: '0',
+    CHAT2SBX_PORT: String(address.port),
   });
   await mkdir(config.stateDir, { recursive: true });
   await writeFile(config.runtimePidPath, `${process.pid}\n`);

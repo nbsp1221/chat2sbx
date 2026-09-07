@@ -6,7 +6,7 @@ import { StateDatabase } from '../../src/state/database.js';
 import { WorkspaceService } from '../../src/workspaces/service.js';
 
 function fixture(): { base: string; database: StateDatabase; service: WorkspaceService } {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-workspaces-'));
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-workspaces-'));
   const allowedRoot = path.join(base, 'allowed');
   fs.mkdirSync(allowedRoot);
   const database = new StateDatabase(':memory:');

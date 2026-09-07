@@ -1,6 +1,6 @@
 # Security policy
 
-chat2shell deliberately gives an AI agent strong capabilities inside disposable Docker Sandbox microVMs. Security reports should distinguish between that intended sandbox authority and ways to cross or bypass the documented boundary.
+chat2sbx deliberately gives an AI agent strong capabilities inside disposable Docker Sandbox microVMs. Security reports should distinguish between that intended sandbox authority and ways to cross or bypass the documented boundary.
 
 ## Supported versions
 
@@ -32,7 +32,7 @@ Examples of security issues include:
 
 - escaping a Docker Sandbox to execute commands on the host;
 - reaching the host Docker daemon or host shell through an MCP tool;
-- accessing a host path that was not managed by chat2shell or explicitly approved;
+- accessing a host path that was not managed by chat2sbx or explicitly approved;
 - bypassing sandbox/workspace ownership checks;
 - exposing internal CodexPro bearer tokens or tunnel secrets through the public MCP surface;
 - unintentionally exposing the MCP server beyond its configured access boundary.
