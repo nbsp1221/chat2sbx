@@ -132,10 +132,22 @@ export class SandboxService {
       return { status: 'created', sandbox: this.#summarize(running) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await this.#driver.remove(sandbox.runtimeName).catch(() => undefined);
-      const destroyedAt = this.#now();
-      this.#database.saveSandbox({ ...sandbox, status: 'failed', error: message, destroyedAt });
-      this.#retainManagedWorkspace(sandbox.workspaceId, destroyedAt);
+      const failed: Sandbox = { ...sandbox, status: 'failed', error: message };
+      this.#database.saveSandbox(failed);
+      let cleanupError: string | undefined;
+      try {
+        await this.#driver.remove(sandbox.runtimeName);
+      } catch (cleanupFailure) {
+        cleanupError =
+          cleanupFailure instanceof Error ? cleanupFailure.message : String(cleanupFailure);
+      }
+      const failedAt = this.#now();
+      this.#database.saveSandbox({
+        ...failed,
+        error: cleanupError ? `${message}; runtime cleanup failed: ${cleanupError}` : message,
+        destroyedAt: cleanupError === undefined ? failedAt : undefined,
+      });
+      this.#retainManagedWorkspace(sandbox.workspaceId, failedAt);
       throw error;
     }
   }

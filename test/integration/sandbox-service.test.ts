@@ -14,6 +14,8 @@ class FakeDriver implements SandboxDriver {
   createCalls = 0;
   readonly memoryCalls: Array<number | undefined> = [];
   healthy = true;
+  healthError: Error | undefined;
+  removeError: Error | undefined;
   removeWait: Promise<void> | undefined;
   removeCalls = 0;
   startCalls = 0;
@@ -48,6 +50,9 @@ class FakeDriver implements SandboxDriver {
   async remove(name: string): Promise<void> {
     this.removeCalls += 1;
     await this.removeWait;
+    if (this.removeError) {
+      throw this.removeError;
+    }
     this.runtimes.delete(name);
   }
 
@@ -57,7 +62,7 @@ class FakeDriver implements SandboxDriver {
   }
 
   waitUntilHealthy(): Promise<void> {
-    return Promise.resolve();
+    return this.healthError ? Promise.reject(this.healthError) : Promise.resolve();
   }
 }
 
@@ -248,6 +253,29 @@ test('an unavailable runtime becomes an explicit failed sandbox without automati
   expect(driver.removeCalls).toBe(1);
   expect(driver.runtimes.size).toBe(0);
   expect(service.list('owner')[0]?.status).toBe('failed');
+});
+
+test('a failed creation remains pending when runtime cleanup fails', async () => {
+  const { appConfig, database, driver, workspaces } = fixture('chat2sbx-create-cleanup-');
+  const limited = new SandboxService({
+    config: { ...appConfig, maxActiveSandboxes: 1 },
+    database,
+    driver,
+    workspaces,
+  });
+  driver.healthError = new Error('health failed');
+  driver.removeError = new Error('cleanup failed');
+
+  await expect(limited.create('owner', {})).rejects.toThrow('health failed');
+
+  const failed = limited.list('owner')[0];
+  expect(failed).toMatchObject({
+    status: 'failed',
+    error: 'health failed; runtime cleanup failed: cleanup failed',
+  });
+  expect(failed?.destroyedAt).toBeUndefined();
+  expect(database.countActiveSandboxes()).toBe(1);
+  expect(driver.runtimes.size).toBe(1);
 });
 
 test('an unhealthy sandbox cannot be reused while its runtime is being removed', async () => {

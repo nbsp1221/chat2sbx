@@ -92,7 +92,7 @@ Failures remove a partially created runtime and persist a visible `failed` recor
 
 The same global instructions are read and returned by `sandbox_get` when an existing sandbox is opened. An absent file adds no response field; symbolic links and other non-regular entries are rejected, and any other read failure is reported. Instructions are not cached, copied into the microVM or workspace, returned by other tools, interpreted as commands, or enforced as security policy.
 
-`maxActiveSandboxes` counts records in `creating`, `running`, or `destroying` state across this chat2sbx database. Reuse and destruction are never blocked by the count limit. The default is unlimited. A per-sandbox memory value is passed directly as `sbx create --memory`; omitting it delegates to the Docker Sandboxes default. chat2sbx does not implement cgroup discovery, memory admission, resource reservation, or automatic resizing.
+`maxActiveSandboxes` counts records in `creating`, `running`, or `destroying` state, plus failed sandboxes whose runtime cleanup is still pending, across this chat2sbx database. Reuse and destruction are never blocked by the count limit. The default is unlimited. A per-sandbox memory value is passed directly as `sbx create --memory`; omitting it delegates to the Docker Sandboxes default. chat2sbx does not implement cgroup discovery, memory admission, resource reservation, or automatic resizing.
 
 ## CodexPro routing
 
