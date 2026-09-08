@@ -2,13 +2,11 @@ import { randomBytes } from 'node:crypto';
 import { isIPv4 } from 'node:net';
 import type { AppConfig } from '../config.js';
 import type {
-  Approval,
   Sandbox,
   SandboxCreateResult,
   SandboxPortExposure,
   SandboxSummary,
   Workspace,
-  WorkspaceMode,
 } from '../domain/types.js';
 import type { StateDatabase } from '../state/database.js';
 import type { WorkspaceService } from '../workspaces/service.js';
@@ -18,13 +16,7 @@ import { formatMemory, parseMemory } from './memory.js';
 
 export interface CreateSandboxRequest {
   readonly workspaceId?: string;
-  readonly workspacePath?: string;
-  readonly workspaceMode?: WorkspaceMode;
   readonly memory?: string;
-}
-
-function isApproval(value: Workspace | Approval): value is Approval {
-  return 'requestedPath' in value;
 }
 
 export class SandboxService {
@@ -55,32 +47,11 @@ export class SandboxService {
   }
 
   async create(ownerId: string, request: CreateSandboxRequest): Promise<SandboxCreateResult> {
-    if (request.workspaceId && request.workspacePath) {
-      throw new Error('Specify workspace_id or workspace_path, not both');
-    }
     const memoryBytes = request.memory ? parseMemory(request.memory) : undefined;
     let workspace: Workspace;
     if (request.workspaceId) {
       workspace = this.#workspaces.getAvailable(ownerId, request.workspaceId);
-      if (request.workspaceMode && request.workspaceMode !== workspace.mode) {
-        throw new Error(
-          `workspace_mode=${request.workspaceMode} does not match approved workspace mode ${workspace.mode}`,
-        );
-      }
-    } else if (request.workspacePath) {
-      const mode = request.workspaceMode ?? 'clone';
-      if (mode === 'managed') {
-        throw new Error('workspace_mode=managed cannot be used with workspace_path');
-      }
-      const candidate = this.#workspaces.requestHost(ownerId, request.workspacePath, mode);
-      if (isApproval(candidate)) {
-        return { status: 'approval_required', approval: candidate };
-      }
-      workspace = candidate;
     } else {
-      if (request.workspaceMode && request.workspaceMode !== 'managed') {
-        throw new Error('workspace_mode requires workspace_path or workspace_id');
-      }
       if (
         this.#config.maxActiveSandboxes !== undefined &&
         this.#database.countActiveSandboxes() >= this.#config.maxActiveSandboxes
@@ -149,7 +120,7 @@ export class SandboxService {
           error: cleanupError ? `${message}; runtime cleanup failed: ${cleanupError}` : message,
           destroyedAt: cleanupError === undefined ? failedAt : undefined,
         });
-        this.#retainManagedWorkspace(sandbox.workspaceId, failedAt);
+        this.#retainWorkspace(sandbox.workspaceId, failedAt);
         throw error;
       }
     });
@@ -297,7 +268,7 @@ export class SandboxService {
           authToken: undefined,
           destroyedAt,
         });
-        this.#retainManagedWorkspace(sandbox.workspaceId, destroyedAt);
+        this.#retainWorkspace(sandbox.workspaceId, destroyedAt);
       } else if (sandbox.status === 'failed') {
         if (runtime) {
           await this.#driver.remove(sandbox.runtimeName);
@@ -321,7 +292,7 @@ export class SandboxService {
           endpoint: undefined,
           authToken: undefined,
         });
-        this.#retainManagedWorkspace(sandbox.workspaceId, destroyedAt);
+        this.#retainWorkspace(sandbox.workspaceId, destroyedAt);
       }
     }
   }
@@ -345,10 +316,10 @@ export class SandboxService {
     }
   }
 
-  #retainManagedWorkspace(workspaceId: string, removedAt: number): void {
+  #retainWorkspace(workspaceId: string, removedAt: number): void {
     const workspace = this.#database.getWorkspace(workspaceId);
-    if (workspace?.kind === 'managed' && workspace.status === 'approved') {
-      this.#workspaces.retainManaged(workspace, removedAt + this.#config.workspaceRetentionMs);
+    if (workspace?.status === 'active') {
+      this.#workspaces.retain(workspace, removedAt + this.#config.workspaceRetentionMs);
     }
   }
 
@@ -382,7 +353,7 @@ export class SandboxService {
     };
     this.#database.saveSandbox(destroyed);
     if (!this.#database.findUnfinishedSandbox(sandbox.ownerId, sandbox.workspaceId)) {
-      this.#retainManagedWorkspace(sandbox.workspaceId, destroyedAt);
+      this.#retainWorkspace(sandbox.workspaceId, destroyedAt);
     }
     return this.#summarize(destroyed);
   }

@@ -92,9 +92,6 @@ export class SbxDriver implements SandboxDriver {
     if (memoryBytes !== undefined) {
       args.push('--memory', formatMemory(memoryBytes));
     }
-    if (workspace.mode === 'clone') {
-      args.push('--clone');
-    }
     args.push('shell', workspace.root);
     await this.#run(args, 180_000);
     const [{ stdout: rootOutput }, { stdout: portsOutput }] = await Promise.all([

@@ -5,6 +5,9 @@ interface Migration {
   readonly up: (database: DatabaseSync) => void;
 }
 
+// The v1 workspace capability columns and approvals table are intentionally retained.
+// Current product behavior is managed-only, but preserving the schema avoids destructive
+// migration work and leaves room to redesign host access later without discarding legacy data.
 const migrations: readonly Migration[] = [
   {
     version: 1,

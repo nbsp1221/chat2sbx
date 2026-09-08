@@ -3,9 +3,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, test, vi } from 'vitest';
 import { status } from '../../src/cli/status.js';
 import { loadRuntimeConfig } from '../../src/config.js';
+import { StateDatabase } from '../../src/state/database.js';
 
 const roots: string[] = [];
 
@@ -29,6 +31,29 @@ test('reports a stopped service when no live PID exists', async () => {
 
   expect(ready).toBe(false);
   expect(output).toEqual(['Service  stopped', 'Sandboxes 0 active / 2 max']);
+});
+
+test('ignores legacy host sandboxes in the active count', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'chat2sbx-status-'));
+  roots.push(root);
+  const config = loadRuntimeConfig({ CHAT2SBX_DATA_ROOT: path.join(root, '.chat2sbx') });
+  new StateDatabase(config.databasePath).close();
+
+  const database = new DatabaseSync(config.databasePath);
+  database.exec(`
+    INSERT INTO workspaces
+      (id, owner_id, kind, mode, root, status, created_at, retained_until)
+    VALUES ('ws_legacy', 'owner', 'host', 'direct', '/tmp/legacy', 'approved', 1, NULL);
+    INSERT INTO sandboxes
+      (id, owner_id, workspace_id, runtime_name, status, created_at, last_activity_at, expires_at)
+    VALUES ('sbx_legacy', 'owner', 'ws_legacy', 'c2s-legacy', 'running', 1, 1, 999999);
+  `);
+  database.close();
+
+  const output: string[] = [];
+  vi.spyOn(console, 'log').mockImplementation((message) => output.push(String(message)));
+  expect(await status(config)).toBe(false);
+  expect(output).toContain('Sandboxes 0 active / unlimited max');
 });
 
 test('checks the running process and MCP health', async () => {

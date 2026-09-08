@@ -1,5 +1,5 @@
 import type http from 'node:http';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import fs from 'node:fs';
@@ -71,10 +71,7 @@ async function callTool(
 test('routes full shell and private Docker only into a real microVM', async () => {
   requireSbx();
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-e2e-'));
-  const allowedRoot = path.join(base, 'host');
-  fs.mkdirSync(allowedRoot);
   const appConfig: AppConfig = {
-    allowedHostRoots: [allowedRoot],
     dataRoot: path.join(base, 'data'),
     databasePath: path.join(base, 'data', 'state', 'test.sqlite'),
     host: '127.0.0.1',
@@ -92,7 +89,6 @@ test('routes full shell and private Docker only into a real microVM', async () =
   };
   const database = new StateDatabase(appConfig.databasePath);
   const workspaces = new WorkspaceService({
-    allowedHostRoots: appConfig.allowedHostRoots,
     dataRoot: appConfig.dataRoot,
     database,
     workspaceRoot: appConfig.workspaceRoot,
@@ -287,73 +283,6 @@ test('routes full shell and private Docker only into a real microVM', async () =
       throw new Error('Expected a replacement sandbox');
     }
     await raceService.destroy('local-owner', sandboxId);
-    sandboxId = undefined;
-
-    const hostRepository = path.join(allowedRoot, 'repository');
-    execFileSync('git', ['clone', '--quiet', '--no-hardlinks', process.cwd(), hostRepository]);
-    const cloneWorkspace = workspaces.registerHost('local-owner', hostRepository, 'clone');
-    const cloneCreateResult = await callTool(url, 16, 'sandbox_create', {
-      workspace_id: cloneWorkspace.id,
-    });
-    const cloneCreated = cloneCreateResult.structuredContent as {
-      sandbox: { id: string };
-      status: string;
-    };
-    expect(cloneCreated.status).toBe('created');
-    sandboxId = cloneCreated.sandbox.id;
-
-    const cloneWrite = await callTool(url, 17, 'write', {
-      content: 'private clone\n',
-      path: 'clone-proof.txt',
-      sandbox_id: sandboxId,
-    });
-    expect(cloneWrite.isError).not.toBe(true);
-    expect(
-      fs.existsSync(path.join(hostRepository, 'clone-proof.txt')),
-      'clone mode must not modify the host checkout',
-    ).toBe(false);
-
-    await callTool(url, 18, 'sandbox_destroy', { sandbox_id: sandboxId });
-    sandboxId = undefined;
-
-    const directWorkspace = workspaces.registerHost('local-owner', hostRepository, 'direct');
-    const hostDisabledWorkspaces = new WorkspaceService({
-      allowedHostRoots: [],
-      dataRoot: appConfig.dataRoot,
-      database,
-      workspaceRoot: appConfig.workspaceRoot,
-    });
-    const hostDisabledSandboxes = new SandboxService({
-      config: { ...appConfig, allowedHostRoots: [] },
-      database,
-      driver,
-      workspaces: hostDisabledWorkspaces,
-    });
-    await expect(
-      hostDisabledSandboxes.create('local-owner', { workspaceId: directWorkspace.id }),
-    ).rejects.toThrow(/Host workspaces are disabled/);
-
-    const directCreateResult = await callTool(url, 19, 'sandbox_create', {
-      workspace_id: directWorkspace.id,
-    });
-    const directCreated = directCreateResult.structuredContent as {
-      sandbox: { id: string };
-      status: string;
-    };
-    expect(directCreated.status).toBe('created');
-    sandboxId = directCreated.sandbox.id;
-
-    const directWrite = await callTool(url, 20, 'write', {
-      content: 'direct write-through\n',
-      path: 'direct-proof.txt',
-      sandbox_id: sandboxId,
-    });
-    expect(directWrite.isError).not.toBe(true);
-    expect(fs.readFileSync(path.join(hostRepository, 'direct-proof.txt'), 'utf8')).toBe(
-      'direct write-through\n',
-    );
-
-    await callTool(url, 21, 'sandbox_destroy', { sandbox_id: sandboxId });
     sandboxId = undefined;
   } finally {
     if (sandboxId) {

@@ -10,7 +10,6 @@ export interface AppConfig {
   readonly workspaceRoot: string;
   readonly stateDir: string;
   readonly databasePath: string;
-  readonly allowedHostRoots: readonly string[];
   readonly sbxBinary: string;
   readonly sandboxTemplate: string;
   readonly sandboxPort: number;
@@ -98,10 +97,6 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
   const workspaceRoot = resolvePath(
     environment.CHAT2SBX_WORKSPACE_ROOT ?? path.join(dataRoot, 'workspaces'),
   );
-  const allowedHostRoots = (environment.CHAT2SBX_ALLOWED_HOST_ROOTS ?? '')
-    .split(path.delimiter)
-    .filter(Boolean)
-    .map(resolvePath);
 
   return {
     host: environment.CHAT2SBX_HOST ?? '127.0.0.1',
@@ -113,7 +108,6 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
     databasePath: resolvePath(
       environment.CHAT2SBX_DATABASE_PATH ?? path.join(stateDir, 'chat2sbx.sqlite'),
     ),
-    allowedHostRoots,
     sbxBinary: 'sbx',
     sandboxTemplate: 'chat2sbx-codexpro:0.30.0',
     sandboxPort: 18_787,

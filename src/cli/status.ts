@@ -49,9 +49,11 @@ function countActiveSandboxes(databasePath: string): number {
   const database = new DatabaseSync(databasePath, { readOnly: true });
   try {
     const row = database
-      .prepare(
-        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL)",
-      )
+      .prepare(`SELECT COUNT(*) AS count FROM sandboxes
+        JOIN workspaces ON workspaces.id = sandboxes.workspace_id
+        WHERE workspaces.kind = 'managed' AND workspaces.mode = 'managed'
+        AND (sandboxes.status IN ('creating', 'running', 'destroying')
+          OR (sandboxes.status = 'failed' AND sandboxes.destroyed_at IS NULL))`)
       .get();
     return Number(row?.count ?? 0);
   } finally {

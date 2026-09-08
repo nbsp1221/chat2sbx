@@ -62,11 +62,7 @@ test('upgrades the version-zero production schema without losing existing rows',
   createVersionZeroDatabase(file);
 
   const migrated = new StateDatabase(file);
-  expect(migrated.getSandbox('sbx_existing')).toMatchObject({
-    id: 'sbx_existing',
-    memoryBytes: undefined,
-    runtimeName: 'c2s-existing',
-  });
+  expect(migrated.getSandbox('sbx_existing')).toBeUndefined();
   migrated.close();
 
   const database = new DatabaseSync(file, { readOnly: true });
@@ -76,6 +72,44 @@ test('upgrades the version-zero production schema without losing existing rows',
   database.close();
 
   new StateDatabase(file).close();
+});
+
+test('keeps legacy host capability rows inert while preserving them in the database', () => {
+  const file = databasePath();
+  new StateDatabase(file).close();
+
+  const raw = new DatabaseSync(file);
+  raw.exec(`
+    INSERT INTO workspaces
+      (id, owner_id, kind, mode, root, status, created_at, retained_until)
+    VALUES ('ws_legacy_host', 'owner', 'host', 'direct', '/tmp/legacy-host', 'approved', 1, NULL);
+    INSERT INTO approvals
+      (id, owner_id, requested_path, mode, status, workspace_id, created_at, decided_at)
+    VALUES ('approval_legacy', 'owner', '/tmp/legacy-host', 'direct', 'approved', 'ws_legacy_host', 1, 2);
+    INSERT INTO sandboxes
+      (id, owner_id, workspace_id, runtime_name, status, created_at, last_activity_at, expires_at)
+    VALUES ('sbx_legacy_host', 'owner', 'ws_legacy_host', 'c2s-legacy-host', 'running', 1, 1, 999999);
+  `);
+  raw.close();
+
+  const database = new StateDatabase(file);
+  expect(database.getWorkspace('ws_legacy_host', 'owner')).toBeUndefined();
+  expect(database.getSandbox('sbx_legacy_host', 'owner')).toBeUndefined();
+  expect(database.listWorkspaces('owner')).toEqual([]);
+  expect(database.listCurrentSandboxes('owner')).toEqual([]);
+  expect(database.countActiveSandboxes()).toBe(0);
+  database.close();
+
+  const preserved = new DatabaseSync(file, { readOnly: true });
+  expect(
+    preserved.prepare("SELECT COUNT(*) AS count FROM workspaces WHERE kind = 'host'").get()?.count,
+  ).toBe(1);
+  expect(preserved.prepare('SELECT COUNT(*) AS count FROM approvals').get()?.count).toBe(1);
+  expect(
+    preserved.prepare("SELECT COUNT(*) AS count FROM sandboxes WHERE id = 'sbx_legacy_host'").get()
+      ?.count,
+  ).toBe(1);
+  preserved.close();
 });
 
 test('rolls back every pending migration and its version when one fails', () => {

@@ -56,7 +56,6 @@ async function runRuntime(config: RuntimeConfig): Promise<void> {
     database,
     workspaceRoot: config.workspaceRoot,
     dataRoot: config.dataRoot,
-    allowedHostRoots: config.allowedHostRoots,
   });
   const driver = new SbxDriver({
     binary: config.sbxBinary,

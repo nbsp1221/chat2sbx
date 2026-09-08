@@ -3,7 +3,7 @@
 ## Goal
 
 ChatGPT can create, discover, reuse, and destroy isolated development environments, then use the existing CodexPro tools with full freedom inside a selected environment.
-No request can inherit a host shell, host sudo, the host Docker socket, or an unapproved host filesystem path.
+No request can inherit a host shell, host sudo, the host Docker socket, or an arbitrary host filesystem path. Workspaces are owned and managed by chat2sbx.
 
 ## Trust boundaries
 
@@ -24,7 +24,7 @@ Internal adapter: CodexPro
 ```
 
 A transport such as OpenAI Secure MCP Tunnel can carry MCP messages to the loopback endpoint, but transport authentication and lifecycle are external to chat2sbx.
-The chat2sbx process owns identity, path approval, sandbox lifecycle, expiration, and routing only after a request reaches its MCP endpoint.
+The chat2sbx process owns identity, managed workspace lifecycle, sandbox lifecycle, expiration, and routing only after a request reaches its MCP endpoint.
 The `SbxDriver` is the only component allowed to invoke `sbx`, and it accepts structured values rather than raw arguments.
 
 ## Runtime ownership
@@ -49,37 +49,16 @@ Neither identity depends on a ChatGPT conversation or MCP session, so another co
 
 The current authentication provider maps every accepted MCP request to `local-owner`. Secure MCP Tunnel is the recommended transport, but transport and access control remain outside this provider.
 
-## Workspace modes
+## Managed workspaces
 
-### Managed
+chat2sbx exposes one workspace model. When `sandbox_create` omits `workspace_id`, chat2sbx creates `~/.chat2sbx/workspaces/<workspace_id>` with mode `0700` and mounts it read-write. Supplying an existing `workspace_id` reuses that persistent managed workspace with a replacement or existing sandbox.
 
-When no workspace is specified, chat2sbx creates `~/.chat2sbx/workspaces/<workspace_id>` with mode `0700` and mounts it read-write.
-The path is owned by chat2sbx and is safe to create without an approval.
-
-### Clone
-
-An approved Git repository is passed to `sbx create --clone`.
-The host checkout is the read-only source of a private clone inside the microVM, so sandbox edits do not immediately affect the host checkout.
-The user must commit and fetch useful changes before sandbox destruction.
-
-### Direct
-
-An approved host directory is mounted read-write at the same absolute path.
-This is intentionally a scoped host filesystem capability, not host execution authority.
-It requires local registration or approval and should be used only when immediate host checkout edits are desired.
-
-## Approval model
-
-The MCP API can request a host path but cannot approve it.
-Host access is disabled by default. `CHAT2SBX_ALLOWED_HOST_ROOTS` must explicitly configure one or more roots before chat2sbx inspects a requested host path.
-The path is canonicalized with `realpath`, must be an allowed root itself or a directory below one, and is rejected when it contains protected credential-directory components. Previously registered host workspaces are revalidated against the current roots whenever they are selected, so removing a root disables those registrations without deleting them.
-A successful request creates an `approval_required` response with a stable approval ID.
-Only the local CLI can approve or reject it, after which MCP callers refer to the resulting `workspace_id` instead of resubmitting a raw path.
+MCP callers cannot request arbitrary host paths. Repository workflows happen inside the managed workspace, for example by running `git clone` and authenticating Git from inside the sandbox. The database retains legacy workspace capability columns and approval tables for non-destructive compatibility and possible future policy work, but the current runtime creates, lists, and selects only managed workspaces.
 
 ## Sandbox creation
 
 1. Read `AGENTS.md` from the configured data directory when it exists so an unreadable file fails before sandbox creation.
-2. Resolve an approved workspace or create a managed workspace.
+2. Resolve an existing managed workspace or create a new managed workspace.
 3. Reuse its running sandbox if one exists. Any other unfinished sandbox, including `failed`, must be explicitly destroyed before the same workspace can be used again.
 4. Atomically enforce the optional active-sandbox count limit and persist a `creating` record before invoking external commands.
 5. Create a named `shell` microVM from the pinned CodexPro template with Docker Sandboxes resource defaults, an optional caller-supplied memory limit, and one dynamic loopback port.
@@ -122,7 +101,7 @@ Session metadata lives only in the chat2sbx process and session files live only 
 
 The lifecycle policy has four rules: a sandbox is removed after 24 hours without a tool call; an active sandbox has no maximum lifetime; a managed workspace is retained for 30 days after sandbox removal; and an expired managed workspace is moved into chat2sbx's recoverable trash directory.
 Every tool call that reaches a running sandbox renews its idle deadline, whether the call succeeds or fails.
-An expired workspace is not moved while it has a sandbox in `creating`, `running`, `destroying`, or `failed` state. The trash directory is not emptied automatically. Host workspaces are never moved or deleted because chat2sbx does not own them.
+An expired workspace is not moved while it has a sandbox in `creating`, `running`, `destroying`, or `failed` state. The trash directory is not emptied automatically.
 
 At controller startup, persisted active records are reconciled with `sbx ls`.
 Any microVM left by the previous controller is removed and its sandbox record becomes `failed` because the foreground CodexPro session belonged to that controller.

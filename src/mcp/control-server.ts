@@ -15,23 +15,13 @@ const sandboxCreateTool: Tool = {
   name: 'sandbox_create',
   title: 'Create or Reuse Sandbox',
   description:
-    'Create an isolated Docker Sandbox, reuse the active sandbox for a workspace, or request host approval for a new host path. A created or reused sandbox includes the current global sandbox instructions when AGENTS.md exists in the chat2sbx data directory.',
+    'Create an isolated Docker Sandbox with a new managed workspace, or reuse the active sandbox for an existing managed workspace. A created or reused sandbox includes the current global sandbox instructions when AGENTS.md exists in the chat2sbx data directory.',
   inputSchema: {
     type: 'object',
     properties: {
       workspace_id: {
         type: 'string',
-        description:
-          'Approved persistent workspace id. Omit with workspace_path to create a managed workspace.',
-      },
-      workspace_path: {
-        type: 'string',
-        description: 'Host path to request. It is never mounted until approved locally.',
-      },
-      workspace_mode: {
-        type: 'string',
-        enum: ['managed', 'clone', 'direct'],
-        description: 'Defaults to managed without a path and clone with a host path.',
+        description: 'Existing managed workspace id. Omit to create a new managed workspace.',
       },
       memory: {
         type: 'string',
@@ -77,7 +67,7 @@ const sandboxDestroyTool: Tool = {
   name: 'sandbox_destroy',
   title: 'Destroy Sandbox',
   description:
-    'Permanently remove one sandbox microVM. Managed workspace files are retained for 30 days; registered host workspaces are never deleted.',
+    'Permanently remove one sandbox microVM. Its managed workspace files are retained for 30 days.',
   inputSchema: {
     type: 'object',
     properties: { sandbox_id: { type: 'string' } },
@@ -135,7 +125,7 @@ const workspaceListTool: Tool = {
   name: 'workspace_list',
   title: 'List Workspaces',
   description:
-    'List all known managed and locally approved workspaces for the current principal, including retained and trashed records.',
+    'List all known managed workspaces for the current principal, including active, retained, and trashed records.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };
@@ -238,21 +228,12 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
       const args = objectArgs(request.params.arguments);
       switch (request.params.name) {
         case 'sandbox_create': {
-          const modeValue = optionalString(args, 'workspace_mode');
-          const mode = modeValue as 'managed' | 'clone' | 'direct' | undefined;
-          if (mode && mode !== 'managed' && mode !== 'clone' && mode !== 'direct') {
-            throw new Error('workspace_mode must be managed, clone, or direct');
-          }
           const instructions = await dependencies.readSandboxInstructions();
           const result = await dependencies.sandboxes.create(dependencies.principalId, {
             workspaceId: optionalString(args, 'workspace_id'),
-            workspacePath: optionalString(args, 'workspace_path'),
-            workspaceMode: mode,
             memory: optionalString(args, 'memory'),
           });
-          return jsonResult(
-            result.sandbox ? withSandboxInstructions(result, instructions) : result,
-          );
+          return jsonResult(withSandboxInstructions(result, instructions));
         }
         case 'sandbox_list':
           return jsonResult({ sandboxes: dependencies.sandboxes.list(dependencies.principalId) });

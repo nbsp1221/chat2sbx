@@ -77,7 +77,6 @@ class FakeDriver implements SandboxDriver {
 
 function config(base: string): AppConfig {
   return {
-    allowedHostRoots: [path.join(base, 'allowed')],
     dataRoot: path.join(base, 'data'),
     databasePath: ':memory:',
     host: '127.0.0.1',
@@ -106,11 +105,9 @@ function fixture(
   workspaces: WorkspaceService;
 } {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  fs.mkdirSync(path.join(base, 'allowed'));
   const database = new StateDatabase(':memory:');
   const appConfig = config(base);
   const workspaces = new WorkspaceService({
-    allowedHostRoots: appConfig.allowedHostRoots,
     dataRoot: appConfig.dataRoot,
     database,
     workspaceRoot: appConfig.workspaceRoot,
@@ -127,9 +124,6 @@ function fixture(
 }
 
 function sandboxFrom(result: SandboxCreateResult): SandboxSummary {
-  if (!result.sandbox) {
-    throw new Error(`Expected sandbox result, received ${result.status}`);
-  }
   return result.sandbox;
 }
 
@@ -144,9 +138,6 @@ test('explicit sandbox ids are reusable and one active sandbox is kept per works
   expect(secondResult.status).toBe('reused');
   expect(sandboxFrom(secondResult).id).toBe(first.id);
   expect(driver.createCalls).toBe(1);
-  await expect(
-    service.create('owner', { workspaceId: first.workspace.id, workspaceMode: 'clone' }),
-  ).rejects.toThrow(/does not match/);
 
   const destroyed = await service.destroy('owner', first.id);
   expect(destroyed.status).toBe('destroyed');
@@ -156,7 +147,7 @@ test('explicit sandbox ids are reusable and one active sandbox is kept per works
   const replacement = sandboxFrom(
     await service.create('owner', { workspaceId: first.workspace.id }),
   );
-  expect(replacement.workspace.status).toBe('approved');
+  expect(replacement.workspace.status).toBe('active');
 });
 
 test('applies an optional active sandbox limit without blocking reuse or later creation', async () => {
@@ -222,20 +213,6 @@ test('passes an explicit memory limit and rejects changing it on reuse', async (
     service.create('owner', { memory: '8g', workspaceId: first.workspace.id }),
   ).rejects.toThrow(/destroy it before changing memory/);
   await expect(service.create('owner', { memory: '4GB' })).rejects.toThrow(/512m or 4g/);
-});
-
-test('host workspace requests stop at approval_required', async () => {
-  const { base, driver, service } = fixture('chat2sbx-approval-');
-  const repository = path.join(base, 'allowed', 'repo');
-  fs.mkdirSync(repository, { recursive: true });
-
-  const result = await service.create('owner', {
-    workspaceMode: 'direct',
-    workspacePath: repository,
-  });
-  expect(result.status).toBe('approval_required');
-  expect(result.approval?.id ?? '').toMatch(/^approval_/);
-  expect(driver.createCalls).toBe(0);
 });
 
 test('exposes a running sandbox port with direct host mapping controls', async () => {
@@ -474,7 +451,7 @@ test('destroying a legacy failed record does not conflict with its running repla
 
   await expect(service.destroy('owner', failed.id)).resolves.toMatchObject({ status: 'destroyed' });
   expect(service.get('owner', running.id).status).toBe('running');
-  expect(workspaces.getAvailable('owner', workspace.id).status).toBe('approved');
+  expect(workspaces.getAvailable('owner', workspace.id).status).toBe('active');
 
   now = 50_000;
   await service.destroy('owner', running.id);

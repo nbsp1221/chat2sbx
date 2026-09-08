@@ -22,7 +22,7 @@
 
 `chat2sbx` is a lightweight MCP control plane that gives ChatGPT a capable development environment inside disposable [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) microVMs.
 
-Each sandbox gets its own shell, approved workspace, CodexPro process, and private Docker Engine. The host shell and host Docker daemon stay outside the execution boundary.
+Each sandbox gets its own shell, chat2sbx-managed workspace, CodexPro process, and private Docker Engine. The host shell, host Docker daemon, and arbitrary host paths stay outside the execution boundary.
 
 CodexPro is the in-sandbox MCP adapter chat2sbx uses for file, repository, and shell tools. `chat2sbx setup` installs the pinned CodexPro version into the local sandbox template, so no separate CodexPro installation is required on the host.
 
@@ -30,7 +30,7 @@ CodexPro is the in-sandbox MCP adapter chat2sbx uses for file, repository, and s
 
 - **Capable by default** — run shell commands, install packages, start servers, and use Docker inside the sandbox.
 - **Isolated from the host** — ChatGPT never receives raw host shell, host sudo, or host Docker access.
-- **Explicit workspace access** — arbitrary host paths require approval; clone mode keeps edits private by default.
+- **Persistent managed workspaces** — sandbox files survive sandbox replacement without exposing arbitrary host paths.
 - **Built for agent workflows** — stable sandbox/workspace IDs, long-running Bash sessions, port exposure, and reusable global instructions work across conversations.
 
 ## How it works
@@ -45,10 +45,10 @@ Secure MCP Tunnel (external, recommended)
   ▼
 chat2sbx (host, loopback only)
   │
-  ├─ workspace / approval / sandbox registry
+  ├─ workspace / sandbox registry
   │
   └─ Docker Sandbox microVM
-       ├─ approved workspace
+       ├─ managed workspace
        ├─ CodexPro
        ├─ unrestricted sandbox shell
        └─ private Docker Engine
@@ -143,18 +143,11 @@ bash_poll
   -> { sandbox_id: "sbx_...", session_id: "bash_..." }
 ```
 
-## Workspace modes
+## Workspaces
 
-| Mode      | Host interaction                                 | Best for                                            |
-| --------- | ------------------------------------------------ | --------------------------------------------------- |
-| `managed` | chat2sbx-owned persistent workspace              | Disposable or standalone agent work                 |
-| `clone`   | Private clone of an approved host repository     | Safe default for existing repositories              |
-| `direct`  | Read/write access to one approved host directory | Work that must immediately affect the host checkout |
+chat2sbx uses one workspace model: every workspace is owned by chat2sbx and stored under `~/.chat2sbx/workspaces` by default. `sandbox_create` creates a new workspace when `workspace_id` is omitted, or reuses an existing managed workspace when `workspace_id` is provided.
 
-Host workspaces are disabled by default. Set `CHAT2SBX_ALLOWED_HOST_ROOTS` to opt in, then approve or register a configured root itself or paths below it. Existing registrations are usable only while their paths remain within the currently configured roots. `clone` is the default for approved host repositories. Use `direct` only when you intentionally want sandbox commands to modify the approved host directory.
-
-> [!IMPORTANT]
-> `clone` protects the host checkout from sandbox writes, but it is not a confidentiality boundary: Docker Sandboxes can expose ignored or untracked files that live inside the approved repository. Keep credentials outside approved roots. The private clone also belongs to the sandbox, so unexported changes disappear when that sandbox is removed; transfer useful work back to the host or remote repository before destruction or expiration.
+For repository work, clone the repository from inside the sandbox and authenticate Git there. chat2sbx does not let MCP callers request, clone, or mount arbitrary host paths.
 
 ## Resource controls and global instructions
 
@@ -171,7 +164,7 @@ Global instructions are advisory text for agents. They are not copied into a wor
 chat2sbx is designed around a simple boundary: **the agent is powerful inside the microVM, not on the host.**
 
 - CodexPro and unrestricted Bash run inside Docker Sandboxes, never directly on the host.
-- Host access is disabled by default. Only paths below explicitly configured roots can be approved for `clone` or `direct` mode.
+- MCP callers cannot request arbitrary host paths; they only receive chat2sbx-owned managed workspaces.
 - The MCP server has no built-in authentication and binds to loopback by default. Do not expose it directly to an untrusted network.
 - `sandbox_expose` publishes a sandbox port without adding authentication; treat the exposed service accordingly.
 - chat2sbx does not read tunnel credentials; internal CodexPro bearer tokens are not returned through MCP.
@@ -184,27 +177,22 @@ Read [Architecture](./docs/architecture.md) for the canonical technical model an
 chat2sbx setup                         Check prerequisites and prepare the sandbox template
 chat2sbx serve                         Run the local MCP gateway in the foreground
 chat2sbx status                        Show service and MCP readiness
-chat2sbx workspace list                List known workspaces
-chat2sbx workspace add <path>          Register a host workspace
-chat2sbx approval list                 List workspace approval history
-chat2sbx approval approve <id>         Approve a host-path request
-chat2sbx approval reject <id>          Reject a host-path request
+chat2sbx workspace list                List managed workspaces
 ```
 
 ## Configuration
 
 The defaults are intentionally small. `.env.example` contains the complete set of environment overrides.
 
-| Variable                        | Default                       | Purpose                                    |
-| ------------------------------- | ----------------------------- | ------------------------------------------ |
-| `CHAT2SBX_HOST`                 | `127.0.0.1`                   | MCP bind address                           |
-| `CHAT2SBX_PORT`                 | `18788`                       | MCP port                                   |
-| `CHAT2SBX_DATA_ROOT`            | `~/.chat2sbx`                 | Persistent chat2sbx data                   |
-| `CHAT2SBX_STATE_DIR`            | `<data root>/state`           | Runtime state directory                    |
-| `CHAT2SBX_WORKSPACE_ROOT`       | `<data root>/workspaces`      | Managed workspace directory                |
-| `CHAT2SBX_DATABASE_PATH`        | `<state dir>/chat2sbx.sqlite` | SQLite state database                      |
-| `CHAT2SBX_ALLOWED_HOST_ROOTS`   | disabled                      | Roots eligible for host workspace approval |
-| `CHAT2SBX_MAX_ACTIVE_SANDBOXES` | `unlimited`                   | Optional active sandbox limit              |
+| Variable                        | Default                       | Purpose                       |
+| ------------------------------- | ----------------------------- | ----------------------------- |
+| `CHAT2SBX_HOST`                 | `127.0.0.1`                   | MCP bind address              |
+| `CHAT2SBX_PORT`                 | `18788`                       | MCP port                      |
+| `CHAT2SBX_DATA_ROOT`            | `~/.chat2sbx`                 | Persistent chat2sbx data      |
+| `CHAT2SBX_STATE_DIR`            | `<data root>/state`           | Runtime state directory       |
+| `CHAT2SBX_WORKSPACE_ROOT`       | `<data root>/workspaces`      | Managed workspace directory   |
+| `CHAT2SBX_DATABASE_PATH`        | `<state dir>/chat2sbx.sqlite` | SQLite state database         |
+| `CHAT2SBX_MAX_ACTIVE_SANDBOXES` | `unlimited`                   | Optional active sandbox limit |
 
 The same sandbox limit can be stored in `~/.chat2sbx/config.json` as `maxActiveSandboxes`; the environment variable takes precedence. `chat2sbx status` shows the effective limit and active count. Configuration is read when `chat2sbx serve` starts.
 
@@ -212,14 +200,14 @@ Global sandbox instructions live at `~/.chat2sbx/AGENTS.md` by default. Changes 
 
 ## Documentation
 
-| Document                                | Purpose                                                                            |
-| --------------------------------------- | ---------------------------------------------------------------------------------- |
-| [Architecture](./docs/architecture.md)  | Trust boundaries, runtime ownership, workspace modes, lifecycle, and Bash sessions |
-| [Security](./SECURITY.md)               | Vulnerability reporting and security scope                                         |
-| [Contributing](./CONTRIBUTING.md)       | Development setup, validation, and contribution workflow                           |
-| [Tests](./test/README.md)               | Unit/integration/E2E boundaries and commands                                       |
-| [Roadmap](./ROADMAP.md)                 | Intended product direction                                                         |
-| [Code of Conduct](./CODE_OF_CONDUCT.md) | Community participation expectations                                               |
+| Document                                | Purpose                                                                     |
+| --------------------------------------- | --------------------------------------------------------------------------- |
+| [Architecture](./docs/architecture.md)  | Trust boundaries, runtime ownership, workspace lifecycle, and Bash sessions |
+| [Security](./SECURITY.md)               | Vulnerability reporting and security scope                                  |
+| [Contributing](./CONTRIBUTING.md)       | Development setup, validation, and contribution workflow                    |
+| [Tests](./test/README.md)               | Unit/integration/E2E boundaries and commands                                |
+| [Roadmap](./ROADMAP.md)                 | Intended product direction                                                  |
+| [Code of Conduct](./CODE_OF_CONDUCT.md) | Community participation expectations                                        |
 
 ## Project status
 

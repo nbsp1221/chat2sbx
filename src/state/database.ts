@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { Approval, Sandbox, SandboxStatus, Workspace } from '../domain/types.js';
+import type { Sandbox, SandboxStatus, Workspace, WorkspaceStatus } from '../domain/types.js';
 import { migrate } from './migrations.js';
 
 type SqlValue = string | number | null;
@@ -14,29 +14,28 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function workspaceStatusFromRow(value: unknown): WorkspaceStatus {
+  if (value === 'approved') {
+    return 'active';
+  }
+  if (value === 'retained' || value === 'trashed') {
+    return value;
+  }
+  throw new Error(`Invalid managed workspace status: ${String(value)}`);
+}
+
+function workspaceStatusForDatabase(status: WorkspaceStatus): 'approved' | 'retained' | 'trashed' {
+  return status === 'active' ? 'approved' : status;
+}
+
 function workspaceFromRow(row: Record<string, unknown>): Workspace {
   return {
     id: String(row.id),
     ownerId: String(row.owner_id),
-    kind: row.kind as Workspace['kind'],
-    mode: row.mode as Workspace['mode'],
     root: String(row.root),
-    status: row.status as Workspace['status'],
+    status: workspaceStatusFromRow(row.status),
     createdAt: Number(row.created_at),
     retainedUntil: optionalNumber(row.retained_until),
-  };
-}
-
-function approvalFromRow(row: Record<string, unknown>): Approval {
-  return {
-    id: String(row.id),
-    ownerId: String(row.owner_id),
-    requestedPath: String(row.requested_path),
-    mode: row.mode as Approval['mode'],
-    status: row.status as Approval['status'],
-    workspaceId: optionalString(row.workspace_id),
-    createdAt: Number(row.created_at),
-    decidedAt: optionalNumber(row.decided_at),
   };
 }
 
@@ -58,6 +57,8 @@ function sandboxFromRow(row: Record<string, unknown>): Sandbox {
     memoryBytes: optionalNumber(row.memory_bytes),
   };
 }
+
+const MANAGED_WORKSPACE = "kind = 'managed' AND mode = 'managed'";
 
 export class StateDatabase {
   readonly #database: DatabaseSync;
@@ -87,55 +88,56 @@ export class StateDatabase {
     this.#database
       .prepare(`INSERT INTO workspaces
       (id, owner_id, kind, mode, root, status, created_at, retained_until)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      VALUES (?, ?, 'managed', 'managed', ?, ?, ?, ?)`)
       .run(
         workspace.id,
         workspace.ownerId,
-        workspace.kind,
-        workspace.mode,
         workspace.root,
-        workspace.status,
+        workspaceStatusForDatabase(workspace.status),
         workspace.createdAt,
         workspace.retainedUntil ?? null,
       );
   }
 
-  updateWorkspaceStatus(id: string, status: Workspace['status'], retainedUntil?: number): void {
+  updateWorkspaceStatus(id: string, status: WorkspaceStatus, retainedUntil?: number): void {
     this.#database
-      .prepare('UPDATE workspaces SET status = ?, retained_until = ? WHERE id = ?')
-      .run(status, retainedUntil ?? null, id);
+      .prepare(
+        `UPDATE workspaces SET status = ?, retained_until = ? WHERE id = ? AND ${MANAGED_WORKSPACE}`,
+      )
+      .run(workspaceStatusForDatabase(status), retainedUntil ?? null, id);
   }
 
   updateWorkspaceLocation(
     id: string,
     root: string,
-    status: Workspace['status'],
+    status: WorkspaceStatus,
     retainedUntil?: number,
   ): void {
     this.#database
-      .prepare('UPDATE workspaces SET root = ?, status = ?, retained_until = ? WHERE id = ?')
-      .run(root, status, retainedUntil ?? null, id);
+      .prepare(
+        `UPDATE workspaces SET root = ?, status = ?, retained_until = ? WHERE id = ? AND ${MANAGED_WORKSPACE}`,
+      )
+      .run(root, workspaceStatusForDatabase(status), retainedUntil ?? null, id);
   }
 
   getWorkspace(id: string, ownerId?: string): Workspace | undefined {
     const row = ownerId
       ? this.#database
-          .prepare('SELECT * FROM workspaces WHERE id = ? AND owner_id = ?')
+          .prepare(
+            `SELECT * FROM workspaces WHERE id = ? AND owner_id = ? AND ${MANAGED_WORKSPACE}`,
+          )
           .get(id, ownerId)
-      : this.#database.prepare('SELECT * FROM workspaces WHERE id = ?').get(id);
-    return row ? workspaceFromRow(row) : undefined;
-  }
-
-  findWorkspace(ownerId: string, root: string, mode: Workspace['mode']): Workspace | undefined {
-    const row = this.#database
-      .prepare('SELECT * FROM workspaces WHERE owner_id = ? AND root = ? AND mode = ?')
-      .get(ownerId, root, mode);
+      : this.#database
+          .prepare(`SELECT * FROM workspaces WHERE id = ? AND ${MANAGED_WORKSPACE}`)
+          .get(id);
     return row ? workspaceFromRow(row) : undefined;
   }
 
   listWorkspaces(ownerId: string): readonly Workspace[] {
     return this.#database
-      .prepare('SELECT * FROM workspaces WHERE owner_id = ? ORDER BY created_at DESC')
+      .prepare(
+        `SELECT * FROM workspaces WHERE owner_id = ? AND ${MANAGED_WORKSPACE} ORDER BY created_at DESC`,
+      )
       .all(ownerId)
       .map(workspaceFromRow);
   }
@@ -143,7 +145,7 @@ export class StateDatabase {
   listExpiredRetainedWorkspaces(now: number): readonly Workspace[] {
     return this.#database
       .prepare(`SELECT * FROM workspaces
-      WHERE status = 'retained' AND retained_until <= ?
+      WHERE ${MANAGED_WORKSPACE} AND status = 'retained' AND retained_until <= ?
       AND NOT EXISTS (
         SELECT 1 FROM sandboxes
         WHERE sandboxes.workspace_id = workspaces.id
@@ -153,69 +155,16 @@ export class StateDatabase {
       .map(workspaceFromRow);
   }
 
-  insertApproval(approval: Approval): void {
-    this.#database
-      .prepare(`INSERT INTO approvals
-      (id, owner_id, requested_path, mode, status, workspace_id, created_at, decided_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(
-        approval.id,
-        approval.ownerId,
-        approval.requestedPath,
-        approval.mode,
-        approval.status,
-        approval.workspaceId ?? null,
-        approval.createdAt,
-        approval.decidedAt ?? null,
-      );
-  }
-
-  getApproval(id: string): Approval | undefined {
-    const row = this.#database.prepare('SELECT * FROM approvals WHERE id = ?').get(id);
-    return row ? approvalFromRow(row) : undefined;
-  }
-
-  findPendingApproval(
-    ownerId: string,
-    requestedPath: string,
-    mode: Approval['mode'],
-  ): Approval | undefined {
-    const row = this.#database
-      .prepare(
-        "SELECT * FROM approvals WHERE owner_id = ? AND requested_path = ? AND mode = ? AND status = 'pending'",
-      )
-      .get(ownerId, requestedPath, mode);
-    return row ? approvalFromRow(row) : undefined;
-  }
-
-  decideApproval(
-    id: string,
-    status: 'approved' | 'rejected',
-    workspaceId: string | undefined,
-    decidedAt: number,
-  ): void {
-    this.#database
-      .prepare('UPDATE approvals SET status = ?, workspace_id = ?, decided_at = ? WHERE id = ?')
-      .run(status, workspaceId ?? null, decidedAt, id);
-  }
-
-  listApprovals(status?: Approval['status']): readonly Approval[] {
-    const rows = status
-      ? this.#database
-          .prepare('SELECT * FROM approvals WHERE status = ? ORDER BY created_at DESC')
-          .all(status)
-      : this.#database.prepare('SELECT * FROM approvals ORDER BY created_at DESC').all();
-    return rows.map(approvalFromRow);
-  }
-
   insertSandboxWithinLimit(sandbox: Sandbox, maxActiveSandboxes?: number): boolean {
     this.#database.exec('BEGIN IMMEDIATE');
     try {
       if (maxActiveSandboxes !== undefined) {
         const row = this.#database
-          .prepare(
-            "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL)",
-          )
+          .prepare(`SELECT COUNT(*) AS count FROM sandboxes
+            JOIN workspaces ON workspaces.id = sandboxes.workspace_id
+            WHERE ${MANAGED_WORKSPACE}
+            AND (sandboxes.status IN ('creating', 'running', 'destroying')
+              OR (sandboxes.status = 'failed' AND sandboxes.destroyed_at IS NULL))`)
           .get();
         if (Number(row?.count ?? 0) >= maxActiveSandboxes) {
           this.#database.exec('ROLLBACK');
@@ -263,27 +212,31 @@ export class StateDatabase {
   }
 
   getSandbox(id: string, ownerId?: string): Sandbox | undefined {
-    const row = ownerId
-      ? this.#database
-          .prepare('SELECT * FROM sandboxes WHERE id = ? AND owner_id = ?')
-          .get(id, ownerId)
-      : this.#database.prepare('SELECT * FROM sandboxes WHERE id = ?').get(id);
+    const ownerClause = ownerId ? 'AND sandboxes.owner_id = ?' : '';
+    const statement = this.#database.prepare(`SELECT sandboxes.* FROM sandboxes
+      JOIN workspaces ON workspaces.id = sandboxes.workspace_id
+      WHERE sandboxes.id = ? ${ownerClause} AND ${MANAGED_WORKSPACE}`);
+    const row = ownerId ? statement.get(id, ownerId) : statement.get(id);
     return row ? sandboxFromRow(row) : undefined;
   }
 
   findUnfinishedSandbox(ownerId: string, workspaceId: string): Sandbox | undefined {
     const row = this.#database
-      .prepare(`SELECT * FROM sandboxes
-      WHERE owner_id = ? AND workspace_id = ? AND status IN ('creating', 'running', 'destroying', 'failed') ORDER BY created_at DESC LIMIT 1`)
+      .prepare(`SELECT sandboxes.* FROM sandboxes
+      JOIN workspaces ON workspaces.id = sandboxes.workspace_id
+      WHERE sandboxes.owner_id = ? AND sandboxes.workspace_id = ? AND ${MANAGED_WORKSPACE}
+      AND sandboxes.status IN ('creating', 'running', 'destroying', 'failed')
+      ORDER BY sandboxes.created_at DESC LIMIT 1`)
       .get(ownerId, workspaceId);
     return row ? sandboxFromRow(row) : undefined;
   }
 
   listCurrentSandboxes(ownerId: string): readonly Sandbox[] {
     return this.#database
-      .prepare(
-        "SELECT * FROM sandboxes WHERE owner_id = ? AND status != 'destroyed' ORDER BY created_at DESC",
-      )
+      .prepare(`SELECT sandboxes.* FROM sandboxes
+        JOIN workspaces ON workspaces.id = sandboxes.workspace_id
+        WHERE sandboxes.owner_id = ? AND sandboxes.status != 'destroyed' AND ${MANAGED_WORKSPACE}
+        ORDER BY sandboxes.created_at DESC`)
       .all(ownerId)
       .map(sandboxFromRow);
   }
@@ -299,16 +252,20 @@ export class StateDatabase {
 
   countActiveSandboxes(): number {
     const row = this.#database
-      .prepare(
-        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL)",
-      )
+      .prepare(`SELECT COUNT(*) AS count FROM sandboxes
+        JOIN workspaces ON workspaces.id = sandboxes.workspace_id
+        WHERE ${MANAGED_WORKSPACE}
+        AND (sandboxes.status IN ('creating', 'running', 'destroying')
+          OR (sandboxes.status = 'failed' AND sandboxes.destroyed_at IS NULL))`)
       .get();
     return Number(row?.count ?? 0);
   }
 
   listExpiredSandboxes(now: number): readonly Sandbox[] {
     return this.#database
-      .prepare("SELECT * FROM sandboxes WHERE status = 'running' AND expires_at <= ?")
+      .prepare(`SELECT sandboxes.* FROM sandboxes
+        JOIN workspaces ON workspaces.id = sandboxes.workspace_id
+        WHERE sandboxes.status = 'running' AND sandboxes.expires_at <= ? AND ${MANAGED_WORKSPACE}`)
       .all(now)
       .map(sandboxFromRow);
   }

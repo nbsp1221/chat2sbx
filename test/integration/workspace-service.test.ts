@@ -8,11 +8,8 @@ import { WorkspaceService } from '../../src/workspaces/service.js';
 
 function fixture(): { base: string; database: StateDatabase; service: WorkspaceService } {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-workspaces-'));
-  const allowedRoot = path.join(base, 'allowed');
-  fs.mkdirSync(allowedRoot);
   const database = new StateDatabase(':memory:');
   const service = new WorkspaceService({
-    allowedHostRoots: [allowedRoot],
     dataRoot: path.join(base, 'data'),
     database,
     now: () => 1_000,
@@ -31,98 +28,23 @@ test('managed workspaces have an independent stable id and private directory', (
 
   expect(workspace.id).toMatch(/^ws_/);
   expect(path.basename(workspace.root)).toBe(workspace.id);
+  expect(workspace.status).toBe('active');
   expect(fs.statSync(workspace.root).mode & 0o777).toBe(0o700);
-});
-
-test('a host path becomes only a pending approval until approved locally', () => {
-  const { base, service } = fixture();
-  const repository = path.join(base, 'allowed', 'repo');
-  fs.mkdirSync(repository);
-
-  const request = service.requestHost('owner', repository, 'direct');
-  expect(request.status).toBe('pending');
-  expect('requestedPath' in request).toBe(true);
-
-  const workspace = service.approve(request.id);
-  expect(workspace.kind).toBe('host');
-  expect(workspace.mode).toBe('direct');
-  expect(workspace.root).toBe(repository);
-});
-
-test('an allowed host root can itself be registered as a workspace', () => {
-  const { base, service } = fixture();
-  const allowedRoot = path.join(base, 'allowed');
-
-  const workspace = service.registerHost('owner', allowedRoot, 'direct');
-
-  expect(workspace.root).toBe(allowedRoot);
-  expect(workspace.mode).toBe('direct');
-});
-
-test('paths outside allow roots and protected paths are rejected', () => {
-  const { base, service } = fixture();
-  const outside = path.join(base, 'outside');
-  fs.mkdirSync(outside);
-
-  expect(() => service.requestHost('owner', outside, 'clone')).toThrow(/allowed host root/);
-
-  const protectedPath = path.join(base, 'allowed', '.ssh', 'repo');
-  fs.mkdirSync(protectedPath, { recursive: true });
-  expect(() => service.requestHost('owner', protectedPath, 'direct')).toThrow(
-    /protected directory/,
-  );
 });
 
 test('retained managed workspaces remain retained until explicitly activated', () => {
   const { service } = fixture();
   const workspace = service.createManaged('owner');
-  service.retainManaged(workspace, 10_000);
+  service.retain(workspace, 10_000);
 
   const available = service.getAvailable('owner', workspace.id);
   expect(available.status).toBe('retained');
   expect(available.retainedUntil).toBe(10_000);
 
   const activated = service.activate(available);
-  expect(activated.status).toBe('approved');
+  expect(activated.status).toBe('active');
   expect(activated.retainedUntil).toBeUndefined();
-  expect(service.getAvailable('owner', workspace.id).status).toBe('approved');
-});
-
-test('host workspaces are disabled without an explicit allowed root', () => {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-disabled-host-'));
-  const database = new StateDatabase(':memory:');
-  const service = new WorkspaceService({
-    allowedHostRoots: [],
-    dataRoot: path.join(base, 'data'),
-    database,
-    workspaceRoot: path.join(base, 'data', 'workspaces'),
-  });
-
-  try {
-    expect(() => service.requestHost('owner', path.join(base, 'missing'), 'clone')).toThrow(
-      /Host workspaces are disabled/,
-    );
-  } finally {
-    database.close();
-    fs.rmSync(base, { force: true, recursive: true });
-  }
-});
-
-test('existing host workspaces follow the current allowed roots', () => {
-  const { base, database, service } = fixture();
-  const repository = path.join(base, 'allowed', 'existing');
-  fs.mkdirSync(repository);
-  const workspace = service.registerHost('owner', repository, 'direct');
-  const disabled = new WorkspaceService({
-    allowedHostRoots: [],
-    dataRoot: path.join(base, 'disabled-data'),
-    database,
-    workspaceRoot: path.join(base, 'disabled-data', 'workspaces'),
-  });
-
-  expect(() => disabled.getAvailable('owner', workspace.id)).toThrow(
-    /Host workspaces are disabled/,
-  );
+  expect(service.getAvailable('owner', workspace.id).status).toBe('active');
 });
 
 test.each<SandboxStatus>(['creating', 'running', 'destroying', 'failed'])(
@@ -130,7 +52,7 @@ test.each<SandboxStatus>(['creating', 'running', 'destroying', 'failed'])(
   (status) => {
     const { database, service } = fixture();
     const workspace = service.createManaged('owner');
-    service.retainManaged(workspace, 1_000);
+    service.retain(workspace, 1_000);
     const unfinished: Sandbox = {
       id: `sbx_${status}`,
       ownerId: 'owner',
@@ -152,7 +74,7 @@ test.each<SandboxStatus>(['creating', 'running', 'destroying', 'failed'])(
 test('expired retained workspaces are trashed after their sandbox is destroyed', () => {
   const { database, service } = fixture();
   const workspace = service.createManaged('owner');
-  service.retainManaged(workspace, 1_000);
+  service.retain(workspace, 1_000);
   database.insertSandboxWithinLimit({
     id: 'sbx_destroyed',
     ownerId: 'owner',
