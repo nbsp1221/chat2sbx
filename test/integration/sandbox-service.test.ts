@@ -251,23 +251,30 @@ test('an unavailable runtime becomes an explicit failed sandbox without automati
 });
 
 test('an unhealthy sandbox cannot be reused while its runtime is being removed', async () => {
-  const { driver, service } = fixture('chat2sbx-unhealthy-race-');
-  const created = sandboxFrom(await service.create('owner', {}));
+  const { appConfig, database, driver, workspaces } = fixture('chat2sbx-unhealthy-race-');
+  const limited = new SandboxService({
+    config: { ...appConfig, maxActiveSandboxes: 1 },
+    database,
+    driver,
+    workspaces,
+  });
+  const created = sandboxFrom(await limited.create('owner', {}));
   let finishRemoval: (() => void) | undefined;
   driver.removeWait = new Promise<void>((resolve) => {
     finishRemoval = resolve;
   });
   driver.healthy = false;
 
-  const healthCheck = service.readyForTool('owner', created.id);
+  const healthCheck = limited.readyForTool('owner', created.id);
   while (driver.removeCalls === 0) {
     await new Promise<void>((resolve) => {
       setImmediate(resolve);
     });
   }
 
-  await expect(service.create('owner', { workspaceId: created.workspace.id })).rejects.toThrow(
-    /sandbox in failed state/,
+  await expect(limited.create('owner', {})).rejects.toThrow(/Active sandbox limit reached/);
+  await expect(limited.create('owner', { workspaceId: created.workspace.id })).rejects.toThrow(
+    /sandbox in destroying state/,
   );
   if (!finishRemoval) {
     throw new Error('Expected runtime removal to be waiting');
