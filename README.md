@@ -143,7 +143,7 @@ bash_poll
 | `clone`   | Private clone of an approved host repository     | Safe default for existing repositories              |
 | `direct`  | Read/write access to one approved host directory | Work that must immediately affect the host checkout |
 
-Host workspaces are disabled by default. Set `CHAT2SBX_ALLOWED_HOST_ROOTS` to opt in, then approve or register paths below those roots. `clone` is the default for approved host repositories. Use `direct` only when you intentionally want sandbox commands to modify the approved host directory.
+Host workspaces are disabled by default. Set `CHAT2SBX_ALLOWED_HOST_ROOTS` to opt in, then approve or register paths below those roots. Existing registrations are usable only while their paths remain below the currently configured roots. `clone` is the default for approved host repositories. Use `direct` only when you intentionally want sandbox commands to modify the approved host directory.
 
 ## Resource controls and global instructions
 

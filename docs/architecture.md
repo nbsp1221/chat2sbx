@@ -72,7 +72,7 @@ It requires local registration or approval and should be used only when immediat
 
 The MCP API can request a host path but cannot approve it.
 Host access is disabled by default. `CHAT2SBX_ALLOWED_HOST_ROOTS` must explicitly configure one or more roots before chat2sbx inspects a requested host path.
-The path is canonicalized with `realpath`, must be a directory strictly below an allowed root, and is rejected when it contains protected credential-directory components.
+The path is canonicalized with `realpath`, must be a directory strictly below an allowed root, and is rejected when it contains protected credential-directory components. Previously registered host workspaces are revalidated against the current roots whenever they are selected, so removing a root disables those registrations without deleting them.
 A successful request creates an `approval_required` response with a stable approval ID.
 Only the local CLI can approve or reject it, after which MCP callers refer to the resulting `workspace_id` instead of resubmitting a raw path.
 
@@ -120,7 +120,7 @@ Session metadata lives only in the chat2sbx process and session files live only 
 
 The lifecycle policy has four rules: a sandbox is removed after 24 hours without a tool call; an active sandbox has no maximum lifetime; a managed workspace is retained for 30 days after sandbox removal; and an expired managed workspace is moved into chat2sbx's recoverable trash directory.
 Every tool call that reaches a running sandbox renews its idle deadline, whether the call succeeds or fails.
-The trash directory is not emptied automatically. Host workspaces are never moved or deleted because chat2sbx does not own them.
+An expired workspace is not moved while it has a sandbox in `creating`, `running`, `destroying`, or `failed` state. The trash directory is not emptied automatically. Host workspaces are never moved or deleted because chat2sbx does not own them.
 
 At controller startup, persisted active records are reconciled with `sbx ls`.
 Any microVM left by the previous controller is removed and its sandbox record becomes `failed` because the foreground CodexPro session belonged to that controller.

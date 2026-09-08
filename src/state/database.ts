@@ -142,7 +142,13 @@ export class StateDatabase {
 
   listExpiredRetainedWorkspaces(now: number): readonly Workspace[] {
     return this.#database
-      .prepare("SELECT * FROM workspaces WHERE status = 'retained' AND retained_until <= ?")
+      .prepare(`SELECT * FROM workspaces
+      WHERE status = 'retained' AND retained_until <= ?
+      AND NOT EXISTS (
+        SELECT 1 FROM sandboxes
+        WHERE sandboxes.workspace_id = workspaces.id
+        AND sandboxes.status IN ('creating', 'running', 'destroying', 'failed')
+      )`)
       .all(now)
       .map(workspaceFromRow);
   }

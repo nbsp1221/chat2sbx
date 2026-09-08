@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, onTestFinished, test } from 'vitest';
+import type { Sandbox, SandboxStatus } from '../../src/domain/types.js';
 import { StateDatabase } from '../../src/state/database.js';
 import { WorkspaceService } from '../../src/workspaces/service.js';
 
@@ -95,4 +96,67 @@ test('host workspaces are disabled without an explicit allowed root', () => {
     database.close();
     fs.rmSync(base, { force: true, recursive: true });
   }
+});
+
+test('existing host workspaces follow the current allowed roots', () => {
+  const { base, database, service } = fixture();
+  const repository = path.join(base, 'allowed', 'existing');
+  fs.mkdirSync(repository);
+  const workspace = service.registerHost('owner', repository, 'direct');
+  const disabled = new WorkspaceService({
+    allowedHostRoots: [],
+    dataRoot: path.join(base, 'disabled-data'),
+    database,
+    workspaceRoot: path.join(base, 'disabled-data', 'workspaces'),
+  });
+
+  expect(() => disabled.getAvailable('owner', workspace.id)).toThrow(
+    /Host workspaces are disabled/,
+  );
+});
+
+test.each<SandboxStatus>(['creating', 'running', 'destroying', 'failed'])(
+  'expired retained workspaces with a %s sandbox are not trashed',
+  (status) => {
+    const { database, service } = fixture();
+    const workspace = service.createManaged('owner');
+    service.retainManaged(workspace, 1_000);
+    const unfinished: Sandbox = {
+      id: `sbx_${status}`,
+      ownerId: 'owner',
+      workspaceId: workspace.id,
+      runtimeName: `runtime-${status}`,
+      status,
+      createdAt: 900,
+      lastActivityAt: 900,
+      expiresAt: 2_000,
+    };
+    database.insertSandboxWithinLimit(unfinished);
+
+    expect(service.trashExpired(1_000)).toEqual([]);
+    expect(service.getAvailable('owner', workspace.id).status).toBe('retained');
+    expect(fs.existsSync(workspace.root)).toBe(true);
+  },
+);
+
+test('expired retained workspaces are trashed after their sandbox is destroyed', () => {
+  const { database, service } = fixture();
+  const workspace = service.createManaged('owner');
+  service.retainManaged(workspace, 1_000);
+  database.insertSandboxWithinLimit({
+    id: 'sbx_destroyed',
+    ownerId: 'owner',
+    workspaceId: workspace.id,
+    runtimeName: 'runtime-destroyed',
+    status: 'destroyed',
+    createdAt: 900,
+    lastActivityAt: 900,
+    expiresAt: 950,
+    destroyedAt: 975,
+  });
+
+  expect(service.trashExpired(1_000)).toEqual([
+    expect.objectContaining({ id: workspace.id, status: 'trashed' }),
+  ]);
+  expect(service.list('owner')[0]?.status).toBe('trashed');
 });

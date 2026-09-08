@@ -303,7 +303,7 @@ export class SandboxService {
 
   #retainManagedWorkspace(workspaceId: string, removedAt: number): void {
     const workspace = this.#database.getWorkspace(workspaceId);
-    if (workspace?.kind === 'managed' && workspace.status !== 'retained') {
+    if (workspace?.kind === 'managed' && workspace.status === 'approved') {
       this.#workspaces.retainManaged(workspace, removedAt + this.#config.workspaceRetentionMs);
     }
   }

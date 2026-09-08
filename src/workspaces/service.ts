@@ -130,6 +130,9 @@ export class WorkspaceService {
     if (!workspace || workspace.status === 'trashed') {
       throw new Error(`Unknown or unavailable workspace: ${workspaceId}`);
     }
+    if (workspace.kind === 'host') {
+      this.#policy.resolveAndValidate(workspace.root);
+    }
     return workspace;
   }
 
