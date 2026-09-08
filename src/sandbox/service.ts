@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { isIPv4 } from 'node:net';
 import type { AppConfig } from '../config.js';
 import type {
   Approval,
@@ -170,12 +171,27 @@ export class SandboxService {
     return this.withReady(ownerId, sandboxId, (sandbox) => Promise.resolve(sandbox));
   }
 
-  async expose(ownerId: string, sandboxId: string, port: number): Promise<SandboxPortExposure> {
-    if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-      throw new Error('port must be an integer from 1 to 65535');
+  async expose(
+    ownerId: string,
+    sandboxId: string,
+    sandboxPort: number,
+    host = '127.0.0.1',
+    hostPort?: number,
+  ): Promise<SandboxPortExposure> {
+    if (!Number.isInteger(sandboxPort) || sandboxPort < 1 || sandboxPort > 65_535) {
+      throw new Error('sandbox_port must be an integer from 1 to 65535');
+    }
+    if (!isIPv4(host)) {
+      throw new Error('host must be an IPv4 address');
+    }
+    if (
+      hostPort !== undefined &&
+      (!Number.isInteger(hostPort) || hostPort < 1 || hostPort > 65_535)
+    ) {
+      throw new Error('host_port must be an integer from 1 to 65535');
     }
     return this.withReady(ownerId, sandboxId, async (sandbox) => {
-      const published = await this.#driver.expose(sandbox.runtimeName, port);
+      const published = await this.#driver.expose(sandbox.runtimeName, sandboxPort, host, hostPort);
       return { sandboxId, ...published };
     });
   }

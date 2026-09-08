@@ -96,14 +96,31 @@ const sandboxExposeTool: Tool = {
   name: 'sandbox_expose',
   title: 'Expose Sandbox Port',
   description:
-    'Publish one TCP port from a running sandbox on an automatically assigned port on every host IPv4 interface. The service inside the sandbox must listen on 0.0.0.0. The mapping has no separate authentication or expiration and disappears with the sandbox. Traffic through it does not renew sandbox activity.',
+    'Publish one TCP/IPv4 port mapping from a running sandbox. sandbox_port is the port inside the sandbox. host is the host IPv4 bind address and defaults to 127.0.0.1. host_port is the host-side port and is allocated automatically when omitted. The service inside the sandbox must listen on 0.0.0.0. The mapping has no separate authentication or expiration and disappears with the sandbox. Traffic through it does not renew sandbox activity.',
   inputSchema: {
     type: 'object',
     properties: {
       sandbox_id: { type: 'string' },
-      port: { type: 'integer', minimum: 1, maximum: 65_535 },
+      sandbox_port: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 65_535,
+        description: 'TCP port inside the sandbox.',
+      },
+      host: {
+        type: 'string',
+        default: '127.0.0.1',
+        description: 'Host IPv4 bind address. Use 0.0.0.0 to listen on every host IPv4 interface.',
+      },
+      host_port: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 65_535,
+        description:
+          'Optional host-side TCP port. Omit to allocate an available port automatically.',
+      },
     },
-    required: ['sandbox_id', 'port'],
+    required: ['sandbox_id', 'sandbox_port'],
     additionalProperties: false,
   },
   annotations: {
@@ -155,6 +172,17 @@ function optionalString(args: Record<string, unknown>, name: string): string | u
 
 function requiredNumber(args: Record<string, unknown>, name: string): number {
   const value = args[name];
+  if (typeof value !== 'number') {
+    throw new Error(`${name} must be a number`);
+  }
+  return value;
+}
+
+function optionalNumber(args: Record<string, unknown>, name: string): number | undefined {
+  const value = args[name];
+  if (value === undefined) {
+    return undefined;
+  }
   if (typeof value !== 'number') {
     throw new Error(`${name} must be a number`);
   }
@@ -242,7 +270,9 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
             await dependencies.sandboxes.expose(
               dependencies.principalId,
               optionalString(args, 'sandbox_id') ?? '',
-              requiredNumber(args, 'port'),
+              requiredNumber(args, 'sandbox_port'),
+              optionalString(args, 'host'),
+              optionalNumber(args, 'host_port'),
             ),
           );
         case 'sandbox_destroy':

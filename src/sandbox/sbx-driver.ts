@@ -25,6 +25,7 @@ export interface RuntimeInfo {
 
 export interface PublishedPort {
   readonly sandboxPort: number;
+  readonly host: string;
   readonly hostPort: number;
 }
 
@@ -38,7 +39,12 @@ export interface SandboxDriver {
   startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string): Promise<void>;
   waitUntilHealthy(endpoint: string, authToken: string, timeoutMs?: number): Promise<void>;
   isHealthy(endpoint: string, authToken: string): Promise<boolean>;
-  expose(runtimeName: string, sandboxPort: number): Promise<PublishedPort>;
+  expose(
+    runtimeName: string,
+    sandboxPort: number,
+    host: string,
+    hostPort?: number,
+  ): Promise<PublishedPort>;
   remove(runtimeName: string): Promise<void>;
   list(): Promise<readonly RuntimeInfo[]>;
 }
@@ -193,16 +199,28 @@ export class SbxDriver implements SandboxDriver {
     }
   }
 
-  async expose(runtimeName: string, sandboxPort: number): Promise<PublishedPort> {
-    const existing = await this.#publishedPort(runtimeName, sandboxPort);
+  async expose(
+    runtimeName: string,
+    sandboxPort: number,
+    host: string,
+    hostPort?: number,
+  ): Promise<PublishedPort> {
+    const existing = await this.#publishedPort(runtimeName, sandboxPort, host, hostPort);
     if (existing) {
       return existing;
     }
-    const hostPort = await this.#availableHostPort();
-    await this.#run(['ports', runtimeName, '--publish', `0.0.0.0:${hostPort}:${sandboxPort}/tcp4`]);
-    const published = await this.#publishedPort(runtimeName, sandboxPort);
+    const resolvedHostPort = hostPort ?? (await this.#availableHostPort(host));
+    await this.#run([
+      'ports',
+      runtimeName,
+      '--publish',
+      `${host}:${resolvedHostPort}:${sandboxPort}/tcp4`,
+    ]);
+    const published = await this.#publishedPort(runtimeName, sandboxPort, host, resolvedHostPort);
     if (!published) {
-      throw new Error(`Sandbox ${runtimeName} did not publish port ${sandboxPort}`);
+      throw new Error(
+        `Sandbox ${runtimeName} did not publish ${host}:${resolvedHostPort} to port ${sandboxPort}`,
+      );
     }
     return published;
   }
@@ -225,23 +243,28 @@ export class SbxDriver implements SandboxDriver {
   async #publishedPort(
     runtimeName: string,
     sandboxPort: number,
+    host: string,
+    hostPort?: number,
   ): Promise<PublishedPort | undefined> {
     const { stdout } = await this.#run(['ports', runtimeName, '--json']);
     const ports = JSON.parse(stdout) as SbxPort[];
     const port = ports.find(
       (candidate) =>
-        candidate.host_ip === '0.0.0.0' &&
+        candidate.host_ip === host &&
         candidate.sandbox_port === sandboxPort &&
-        candidate.protocol === 'tcp4',
+        candidate.protocol === 'tcp4' &&
+        (hostPort === undefined || candidate.host_port === hostPort),
     );
-    return port ? { sandboxPort: port.sandbox_port, hostPort: port.host_port } : undefined;
+    return port
+      ? { sandboxPort: port.sandbox_port, host: port.host_ip, hostPort: port.host_port }
+      : undefined;
   }
 
-  async #availableHostPort(): Promise<number> {
+  async #availableHostPort(host: string): Promise<number> {
     const server = createServer();
     return new Promise<number>((resolve, reject) => {
       server.once('error', reject);
-      server.listen(0, '0.0.0.0', () => {
+      server.listen(0, host, () => {
         const address = server.address();
         server.close((error) => {
           if (error) {

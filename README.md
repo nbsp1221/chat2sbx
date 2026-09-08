@@ -129,6 +129,8 @@ sandbox_create
   -> sandbox_destroy when the environment is no longer needed
 ```
 
+`sandbox_expose` uses direct port-mapping fields: `sandbox_port` is required, `host` defaults to `127.0.0.1`, and `host_port` is automatically assigned when omitted. Set an explicit host IPv4 address such as `0.0.0.0` and/or host port when you intentionally want a different mapping.
+
 `sandbox_create` can optionally set a memory ceiling such as `512m` or `4g`. When reopening an existing sandbox, call `sandbox_get` first so its current state and any global sandbox instructions are loaded.
 
 A typical long-running command looks like:

@@ -37,8 +37,13 @@ class FakeDriver implements SandboxDriver {
     return { endpoint: 'http://127.0.0.1:1234/mcp', runtimeRoot: '/workspace' };
   }
 
-  expose(_name: string, sandboxPort: number): Promise<PublishedPort> {
-    return Promise.resolve({ hostPort: 32_000, sandboxPort });
+  expose(
+    _name: string,
+    sandboxPort: number,
+    host: string,
+    hostPort?: number,
+  ): Promise<PublishedPort> {
+    return Promise.resolve({ host, hostPort: hostPort ?? 32_000, sandboxPort });
   }
 
   isHealthy(): Promise<boolean> {
@@ -233,16 +238,27 @@ test('host workspace requests stop at approval_required', async () => {
   expect(driver.createCalls).toBe(0);
 });
 
-test('exposes a running sandbox port on an automatically assigned host port', async () => {
+test('exposes a running sandbox port with direct host mapping controls', async () => {
   const { service } = fixture('chat2sbx-expose-');
   const created = sandboxFrom(await service.create('owner', {}));
 
   await expect(service.expose('owner', created.id, 3_000)).resolves.toEqual({
+    host: '127.0.0.1',
     hostPort: 32_000,
     sandboxId: created.id,
     sandboxPort: 3_000,
   });
-  await expect(service.expose('owner', created.id, 0)).rejects.toThrow(/integer from 1 to 65535/);
+  await expect(service.expose('owner', created.id, 3_000, '0.0.0.0', 8_080)).resolves.toEqual({
+    host: '0.0.0.0',
+    hostPort: 8_080,
+    sandboxId: created.id,
+    sandboxPort: 3_000,
+  });
+  await expect(service.expose('owner', created.id, 0)).rejects.toThrow(/sandbox_port/);
+  await expect(service.expose('owner', created.id, 3_000, 'localhost')).rejects.toThrow(/IPv4/);
+  await expect(service.expose('owner', created.id, 3_000, '127.0.0.1', 0)).rejects.toThrow(
+    /host_port/,
+  );
 });
 
 test('an unavailable runtime becomes an explicit failed sandbox without automatic restart', async () => {

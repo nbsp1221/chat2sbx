@@ -37,9 +37,9 @@ There is no shell-script supervisor, fixed startup timeout, daemon mode, automat
 
 ## Port exposure
 
-`sandbox_expose` asks `SbxDriver` to publish one TCP/IPv4 sandbox port on `0.0.0.0` using an automatically assigned host port. The service inside the sandbox must listen on `0.0.0.0`; chat2sbx does not start it or check its protocol or health.
+`sandbox_expose` asks `SbxDriver` to publish one TCP/IPv4 mapping from a sandbox port to a host bind address and host port. The caller provides `sandbox_port`; `host` defaults to `127.0.0.1`, and `host_port` is allocated automatically when omitted. Callers can instead provide an explicit host IPv4 address, including `0.0.0.0`, and an explicit host port. The service inside the sandbox must listen on `0.0.0.0`; chat2sbx does not start it or check its protocol or health.
 
-The mapping is owned by Docker Sandboxes and disappears with the sandbox. chat2sbx stores no exposure state, creates no URL, adds no authentication or expiration, and has no knowledge of Tailscale or any other route by which the user reaches the host. A repeated request for the same sandbox port returns the existing mapping. Traffic through the mapping does not renew the sandbox inactivity deadline because it is not an MCP tool call.
+The mapping is owned by Docker Sandboxes and disappears with the sandbox. chat2sbx stores no exposure state, creates no URL, adds no authentication or expiration, and has no knowledge of Tailscale or any other route by which the user reaches the host. Repeating the same mapping request returns the existing mapping; a different host or host port can create another mapping for the same sandbox port. Traffic through a mapping does not renew the sandbox inactivity deadline because it is not an MCP tool call.
 
 ## Independent identities
 

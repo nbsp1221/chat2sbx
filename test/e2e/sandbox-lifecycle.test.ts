@@ -232,24 +232,26 @@ test('routes full shell and private Docker only into a real microVM', async () =
     expect(preview.isError, JSON.stringify(preview)).not.toBe(true);
 
     const exposed = await callTool(url, 12, 'sandbox_expose', {
-      port: 3_000,
       sandbox_id: sandboxId,
+      sandbox_port: 3_000,
     });
     expect(exposed.isError, JSON.stringify(exposed)).not.toBe(true);
     const exposure = exposed.structuredContent as {
+      host: string;
       hostPort: number;
       sandboxId: string;
       sandboxPort: number;
     };
     expect(exposure.sandboxId).toBe(sandboxId);
     expect(exposure.sandboxPort).toBe(3_000);
+    expect(exposure.host).toBe('127.0.0.1');
     expect(await (await fetch(`http://127.0.0.1:${exposure.hostPort}`)).text()).toBe(
       'sandbox-preview',
     );
 
     const repeated = await callTool(url, 13, 'sandbox_expose', {
-      port: 3_000,
       sandbox_id: sandboxId,
+      sandbox_port: 3_000,
     });
     expect(repeated.structuredContent).toEqual(exposure);
 

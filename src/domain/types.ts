@@ -64,5 +64,6 @@ export interface SandboxCreateResult {
 export interface SandboxPortExposure {
   readonly sandboxId: string;
   readonly sandboxPort: number;
+  readonly host: string;
   readonly hostPort: number;
 }
