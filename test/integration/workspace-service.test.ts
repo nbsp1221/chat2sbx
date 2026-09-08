@@ -48,7 +48,7 @@ test('retained managed workspaces remain retained until explicitly activated', (
 });
 
 test.each<SandboxStatus>(['creating', 'running', 'destroying', 'failed'])(
-  'expired retained workspaces with a %s sandbox are not trashed',
+  'expired retained workspaces with a %s sandbox are not archived',
   (status) => {
     const { database, service } = fixture();
     const workspace = service.createManaged('owner');
@@ -65,13 +65,13 @@ test.each<SandboxStatus>(['creating', 'running', 'destroying', 'failed'])(
     };
     database.insertSandboxWithinLimit(unfinished);
 
-    expect(service.trashExpired(1_000)).toEqual([]);
+    expect(service.archiveExpired(1_000)).toEqual([]);
     expect(service.getAvailable('owner', workspace.id).status).toBe('retained');
     expect(fs.existsSync(workspace.root)).toBe(true);
   },
 );
 
-test('expired retained workspaces are trashed after their sandbox is destroyed', () => {
+test('expired retained workspaces are archived indefinitely after their sandbox is destroyed', () => {
   const { database, service } = fixture();
   const workspace = service.createManaged('owner');
   service.retain(workspace, 1_000);
@@ -87,8 +87,12 @@ test('expired retained workspaces are trashed after their sandbox is destroyed',
     destroyedAt: 975,
   });
 
-  expect(service.trashExpired(1_000)).toEqual([
-    expect.objectContaining({ id: workspace.id, status: 'trashed' }),
-  ]);
-  expect(service.list('owner')[0]?.status).toBe('trashed');
+  const archived = service.archiveExpired(1_000);
+  expect(archived).toEqual([expect.objectContaining({ id: workspace.id, status: 'archived' })]);
+  expect(path.basename(path.dirname(archived[0]!.root))).toBe('archive');
+  expect(fs.existsSync(archived[0]!.root)).toBe(true);
+  expect(service.list('owner')[0]?.status).toBe('archived');
+  expect(() => service.getAvailable('owner', workspace.id)).toThrow(/unavailable workspace/);
+  expect(service.archiveExpired(100_000)).toEqual([]);
+  expect(fs.existsSync(archived[0]!.root)).toBe(true);
 });

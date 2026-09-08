@@ -99,9 +99,9 @@ Session metadata lives only in the chat2sbx process and session files live only 
 
 ## Expiration and failure
 
-The lifecycle policy has four rules: a sandbox is removed after 24 hours without a tool call; an active sandbox has no maximum lifetime; a managed workspace is retained for 30 days after sandbox removal; and an expired managed workspace is moved into chat2sbx's recoverable trash directory.
+The lifecycle policy has four rules: a sandbox is removed after 24 hours without a tool call; an active sandbox has no maximum lifetime; a managed workspace is retained for 30 days after sandbox removal; and an expired managed workspace is moved into chat2sbx's archive directory and retained indefinitely.
 Every tool call that reaches a running sandbox renews its idle deadline, whether the call succeeds or fails.
-An expired workspace is not moved while it has a sandbox in `creating`, `running`, `destroying`, or `failed` state. The trash directory is not emptied automatically.
+An expired workspace is not archived while it has a sandbox in `creating`, `running`, `destroying`, or `failed` state. Archived workspaces are not automatically deleted and are not currently selectable for a new sandbox.
 
 At controller startup, persisted active records are reconciled with `sbx ls`.
 A microVM left by a previous controller is not resumed because its foreground CodexPro session belonged to that controller. If runtime cleanup succeeds, the sandbox is recorded as `destroyed`, its managed workspace is retained, and that workspace can be used immediately for a replacement sandbox.

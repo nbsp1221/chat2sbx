@@ -236,7 +236,7 @@ export class SandboxService {
     });
   }
 
-  async reap(): Promise<{ destroyed: readonly string[]; trashed: readonly string[] }> {
+  async reap(): Promise<{ archived: readonly string[]; destroyed: readonly string[] }> {
     const destroyed: string[] = [];
     for (const candidate of this.#database.listExpiredSandboxes(this.#now())) {
       await this.withLock(candidate.id, async () => {
@@ -248,8 +248,8 @@ export class SandboxService {
         destroyed.push(sandbox.id);
       });
     }
-    const trashed = this.#workspaces.trashExpired(this.#now()).map((workspace) => workspace.id);
-    return { destroyed, trashed };
+    const archived = this.#workspaces.archiveExpired(this.#now()).map((workspace) => workspace.id);
+    return { archived, destroyed };
   }
 
   async reconcile(): Promise<void> {

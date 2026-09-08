@@ -1,4 +1,4 @@
-export type WorkspaceStatus = 'active' | 'retained' | 'trashed';
+export type WorkspaceStatus = 'active' | 'retained' | 'archived';
 export type SandboxStatus = 'creating' | 'running' | 'destroying' | 'destroyed' | 'failed';
 
 export interface Workspace {

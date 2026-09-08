@@ -18,14 +18,20 @@ function workspaceStatusFromRow(value: unknown): WorkspaceStatus {
   if (value === 'approved') {
     return 'active';
   }
-  if (value === 'retained' || value === 'trashed') {
+  if (value === 'retained') {
     return value;
+  }
+  if (value === 'trashed') {
+    return 'archived';
   }
   throw new Error(`Invalid managed workspace status: ${String(value)}`);
 }
 
 function workspaceStatusForDatabase(status: WorkspaceStatus): 'approved' | 'retained' | 'trashed' {
-  return status === 'active' ? 'approved' : status;
+  if (status === 'active') {
+    return 'approved';
+  }
+  return status === 'archived' ? 'trashed' : status;
 }
 
 function workspaceFromRow(row: Record<string, unknown>): Workspace {

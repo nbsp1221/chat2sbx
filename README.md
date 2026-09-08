@@ -149,6 +149,8 @@ chat2sbx uses one workspace model: every workspace is owned by chat2sbx and stor
 
 For repository work, clone the repository from inside the sandbox and authenticate Git there. chat2sbx does not let MCP callers request, clone, or mount arbitrary host paths.
 
+After a sandbox is removed, its workspace remains reusable for 30 days. When that retention period expires, chat2sbx moves the workspace to `~/.chat2sbx/archive` and keeps it there indefinitely. chat2sbx does not automatically delete archived workspace data.
+
 ## Resource controls and global instructions
 
 Resource controls are optional. By default chat2sbx leaves Docker Sandboxes resource sizing unchanged and allows any number of active sandboxes. Operators can:

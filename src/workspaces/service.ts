@@ -7,7 +7,7 @@ import { createId } from '../domain/ids.js';
 export class WorkspaceService {
   readonly #database: StateDatabase;
   readonly #workspaceRoot: string;
-  readonly #trashRoot: string;
+  readonly #archiveRoot: string;
   readonly #now: () => number;
 
   constructor(options: {
@@ -18,10 +18,10 @@ export class WorkspaceService {
   }) {
     this.#database = options.database;
     this.#workspaceRoot = options.workspaceRoot;
-    this.#trashRoot = path.join(options.dataRoot, 'trash');
+    this.#archiveRoot = path.join(options.dataRoot, 'archive');
     this.#now = options.now ?? Date.now;
     fs.mkdirSync(this.#workspaceRoot, { recursive: true, mode: 0o700 });
-    fs.mkdirSync(this.#trashRoot, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(this.#archiveRoot, { recursive: true, mode: 0o700 });
   }
 
   createManaged(ownerId: string): Workspace {
@@ -46,7 +46,7 @@ export class WorkspaceService {
 
   getAvailable(ownerId: string, workspaceId: string): Workspace {
     const workspace = this.#database.getWorkspace(workspaceId, ownerId);
-    if (!workspace || workspace.status === 'trashed') {
+    if (!workspace || workspace.status === 'archived') {
       throw new Error(`Unknown or unavailable workspace: ${workspaceId}`);
     }
     return workspace;
@@ -69,24 +69,24 @@ export class WorkspaceService {
     return { ...workspace, status: 'retained', retainedUntil };
   }
 
-  trashExpired(now = this.#now()): readonly Workspace[] {
-    const trashed: Workspace[] = [];
+  archiveExpired(now = this.#now()): readonly Workspace[] {
+    const archived: Workspace[] = [];
     for (const workspace of this.#database.listExpiredRetainedWorkspaces(now)) {
       const source = fs.realpathSync.native(workspace.root);
       const workspaceRoot = fs.realpathSync.native(this.#workspaceRoot);
       if (path.dirname(source) !== workspaceRoot || path.basename(source) !== workspace.id) {
-        throw new Error(`Refusing to trash unexpected managed path: ${source}`);
+        throw new Error(`Refusing to archive unexpected managed path: ${source}`);
       }
-      const destination = path.join(this.#trashRoot, `${workspace.id}-${now}`);
+      const destination = path.join(this.#archiveRoot, `${workspace.id}-${now}`);
       fs.renameSync(source, destination);
-      this.#database.updateWorkspaceLocation(workspace.id, destination, 'trashed');
-      trashed.push({
+      this.#database.updateWorkspaceLocation(workspace.id, destination, 'archived');
+      archived.push({
         ...workspace,
         root: destination,
-        status: 'trashed',
+        status: 'archived',
         retainedUntil: undefined,
       });
     }
-    return trashed;
+    return archived;
   }
 }

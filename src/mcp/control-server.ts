@@ -125,7 +125,7 @@ const workspaceListTool: Tool = {
   name: 'workspace_list',
   title: 'List Workspaces',
   description:
-    'List all known managed workspaces for the current principal, including active, retained, and trashed records.',
+    'List all known managed workspaces for the current principal, including active, retained, and archived records.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };

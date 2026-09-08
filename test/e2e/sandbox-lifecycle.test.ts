@@ -277,7 +277,7 @@ test('routes full shell and private Docker only into a real microVM', async () =
     const replacementPromise = raceService.create('local-owner', {
       workspaceId: retainedWorkspace.id,
     });
-    expect((await raceService.reap()).trashed).toEqual([]);
+    expect((await raceService.reap()).archived).toEqual([]);
     sandboxId = (await replacementPromise).sandbox?.id;
     if (!sandboxId) {
       throw new Error('Expected a replacement sandbox');
