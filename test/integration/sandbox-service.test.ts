@@ -14,6 +14,7 @@ class FakeDriver implements SandboxDriver {
   createCalls = 0;
   readonly memoryCalls: Array<number | undefined> = [];
   healthy = true;
+  removeWait: Promise<void> | undefined;
   removeCalls = 0;
   startCalls = 0;
 
@@ -44,10 +45,10 @@ class FakeDriver implements SandboxDriver {
     return Promise.resolve([...this.runtimes.values()]);
   }
 
-  remove(name: string): Promise<void> {
+  async remove(name: string): Promise<void> {
     this.removeCalls += 1;
+    await this.removeWait;
     this.runtimes.delete(name);
-    return Promise.resolve();
   }
 
   startCodexPro(): Promise<void> {
@@ -247,6 +248,32 @@ test('an unavailable runtime becomes an explicit failed sandbox without automati
   expect(driver.removeCalls).toBe(1);
   expect(driver.runtimes.size).toBe(0);
   expect(service.list('owner')[0]?.status).toBe('failed');
+});
+
+test('an unhealthy sandbox cannot be reused while its runtime is being removed', async () => {
+  const { driver, service } = fixture('chat2sbx-unhealthy-race-');
+  const created = sandboxFrom(await service.create('owner', {}));
+  let finishRemoval: (() => void) | undefined;
+  driver.removeWait = new Promise<void>((resolve) => {
+    finishRemoval = resolve;
+  });
+  driver.healthy = false;
+
+  const healthCheck = service.readyForTool('owner', created.id);
+  while (driver.removeCalls === 0) {
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+  }
+
+  await expect(service.create('owner', { workspaceId: created.workspace.id })).rejects.toThrow(
+    /sandbox in failed state/,
+  );
+  if (!finishRemoval) {
+    throw new Error('Expected runtime removal to be waiting');
+  }
+  finishRemoval();
+  await expect(healthCheck).rejects.toThrow(/destroy this sandbox and create a new one/);
 });
 
 test('a failed sandbox blocks only its workspace until explicit destruction', async () => {

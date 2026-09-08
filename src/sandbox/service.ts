@@ -188,6 +188,14 @@ export class SandboxService {
       }
       if (!(await this.#driver.isHealthy(sandbox.endpoint, sandbox.authToken))) {
         const message = 'CodexPro is unavailable; destroy this sandbox and create a new one';
+        const failed: Sandbox = {
+          ...sandbox,
+          status: 'failed',
+          endpoint: undefined,
+          authToken: undefined,
+          error: message,
+        };
+        this.#database.saveSandbox(failed);
         let error = message;
         try {
           await this.#driver.remove(sandbox.runtimeName);
@@ -195,14 +203,8 @@ export class SandboxService {
           const cleanupMessage =
             cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
           error = `${message}; runtime cleanup failed: ${cleanupMessage}`;
+          this.#database.saveSandbox({ ...failed, error });
         }
-        this.#database.saveSandbox({
-          ...sandbox,
-          status: 'failed',
-          endpoint: undefined,
-          authToken: undefined,
-          error,
-        });
         throw new Error(`${error}: ${sandboxId}`);
       }
       try {
