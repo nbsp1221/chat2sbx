@@ -23,7 +23,6 @@ test('reports a stopped service when no live PID exists', async () => {
   const ready = await status(
     loadRuntimeConfig({
       CHAT2SBX_DATA_ROOT: path.join(root, '.chat2sbx'),
-      CHAT2SBX_ENABLE_TUNNEL: '0',
       CHAT2SBX_MAX_ACTIVE_SANDBOXES: '2',
     }),
   );
@@ -47,7 +46,6 @@ test('checks the running process and MCP health', async () => {
 
   const config = loadRuntimeConfig({
     CHAT2SBX_DATA_ROOT: path.join(root, '.chat2sbx'),
-    CHAT2SBX_ENABLE_TUNNEL: '0',
     CHAT2SBX_PORT: String(address.port),
   });
   await mkdir(config.stateDir, { recursive: true });
@@ -60,7 +58,6 @@ test('checks the running process and MCP health', async () => {
     expect(output).toEqual([
       `Service  running (PID ${process.pid})`,
       `MCP      ready at 127.0.0.1:${address.port}`,
-      'Tunnel   disabled',
       'Sandboxes 0 active / unlimited max',
     ]);
   } finally {

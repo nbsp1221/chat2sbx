@@ -23,17 +23,17 @@ Primary execution boundary: Docker Sandbox microVM
 Internal adapter: CodexPro
 ```
 
-The Secure MCP Tunnel transports MCP messages to one loopback endpoint and does not decide tool policy.
-The chat2sbx process owns identity, path approval, lifecycle, expiration, and routing.
+A transport such as OpenAI Secure MCP Tunnel can carry MCP messages to the loopback endpoint, but transport authentication and lifecycle are external to chat2sbx.
+The chat2sbx process owns identity, path approval, sandbox lifecycle, expiration, and routing only after a request reaches its MCP endpoint.
 The `SbxDriver` is the only component allowed to invoke `sbx`, and it accepts structured values rather than raw arguments.
 
 ## Runtime ownership
 
-The npm package exposes one `chat2sbx` executable. `chat2sbx serve` is the only server entry point and stays in the foreground. It validates local dependencies, reconciles persisted sandbox state, opens the loopback MCP gateway, starts tunnel-client as its child, and closes both on SIGINT or SIGTERM.
+The npm package exposes one `chat2sbx` executable. `chat2sbx serve` is the only server entry point and stays in the foreground. It validates local dependencies, reconciles persisted sandbox state, opens the loopback MCP gateway, and closes it on SIGINT or SIGTERM. chat2sbx does not start or supervise any external tunnel process.
 
 The writable SQLite connection checks the application-owned `user_version` and applies all pending forward migrations in one transaction before exposing the database to application logic. Fresh and existing databases follow the same ordered migration list. Reopening an up-to-date database is a no-op, while a database created by a newer unsupported chat2sbx version fails before any application work. There is no manual migration command, down migration, or schema-dependent branch in business logic.
 
-There is no shell-script supervisor, fixed startup timeout, daemon mode, automatic restart, or service installation. A process manager may supervise `chat2sbx serve`, but those policies remain outside the product. `chat2sbx status` reads the runtime PID and probes both the MCP gateway and tunnel readiness endpoints.
+There is no shell-script supervisor, fixed startup timeout, daemon mode, automatic restart, or service installation. A process manager may supervise `chat2sbx serve`, but those policies remain outside the product. `chat2sbx status` reads the runtime PID and probes the local MCP gateway.
 
 ## Port exposure
 

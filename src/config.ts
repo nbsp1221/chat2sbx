@@ -22,11 +22,6 @@ export interface AppConfig {
 
 export interface RuntimeConfig extends AppConfig {
   readonly runtimePidPath: string;
-  readonly tunnelEnabled: boolean;
-  readonly tunnelClient: string;
-  readonly tunnelKeyPath: string;
-  readonly tunnelIdPath: string;
-  readonly tunnelHealthUrlPath: string;
 }
 
 function readPort(value: string | undefined, fallback: number, name: string): number {
@@ -134,16 +129,8 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
 
 export function loadRuntimeConfig(environment: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const config = loadAppConfig(environment);
-  const tunnelSecretDir = resolvePath(
-    environment.CHAT2SBX_SECRET_DIR ?? '~/.secrets/tunnel-client',
-  );
   return {
     ...config,
     runtimePidPath: path.join(config.stateDir, 'runtime.pid'),
-    tunnelEnabled: environment.CHAT2SBX_ENABLE_TUNNEL !== '0',
-    tunnelClient: resolvePath(environment.CHAT2SBX_TUNNEL_CLIENT ?? '~/.local/bin/tunnel-client'),
-    tunnelKeyPath: path.join(tunnelSecretDir, 'key'),
-    tunnelIdPath: path.join(tunnelSecretDir, 'tunnel-id'),
-    tunnelHealthUrlPath: path.join(config.stateDir, 'health.url'),
   };
 }

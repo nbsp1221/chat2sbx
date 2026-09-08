@@ -13,7 +13,6 @@ test('makes an existing state directory owner-only before startup', async () => 
   const config = {
     ...loadRuntimeConfig({
       CHAT2SBX_DATA_ROOT: path.join(root, 'data'),
-      CHAT2SBX_ENABLE_TUNNEL: '0',
       CHAT2SBX_STATE_DIR: stateDir,
     }),
     sbxBinary: path.join(root, 'missing-sbx'),

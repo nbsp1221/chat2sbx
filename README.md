@@ -40,7 +40,7 @@ ChatGPT
   │
   │ MCP
   ▼
-Secure MCP Tunnel
+Secure MCP Tunnel (external, recommended)
   │
   ▼
 chat2sbx (host, loopback only)
@@ -81,46 +81,41 @@ npm install --global chat2sbx
 
 ### 2. Prepare the sandbox template
 
-Start without a tunnel first to verify the local runtime:
-
 ```bash
-CHAT2SBX_ENABLE_TUNNEL=0 chat2sbx setup
+chat2sbx setup
 ```
 
 `setup` checks Docker Sandboxes and creates the pinned `chat2sbx-codexpro:0.30.0` template when needed.
 
-### 3. Start the MCP server
+### 3. Start the local MCP server
 
 ```bash
-CHAT2SBX_ENABLE_TUNNEL=0 chat2sbx serve
+chat2sbx serve
 ```
 
 In another terminal:
 
 ```bash
-CHAT2SBX_ENABLE_TUNNEL=0 chat2sbx status
+chat2sbx status
 ```
 
-The local MCP endpoint binds to loopback by default.
+The MCP endpoint binds to loopback at `http://127.0.0.1:18788/mcp` by default. chat2sbx does not expose or authenticate this endpoint for you.
 
 ### 4. Connect ChatGPT
 
-Follow OpenAI's [Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels), configure the tunnel client, tunnel ID, and key file, then run:
+For ChatGPT, the recommended transport is OpenAI Secure MCP Tunnel. chat2sbx does not install, configure, authenticate, or supervise `tunnel-client`; use OpenAI's [Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) and run the official client separately.
+
+The simplest environment-variable flow is:
 
 ```bash
-chat2sbx setup
-chat2sbx serve
+export CONTROL_PLANE_TUNNEL_ID='tunnel_...'
+export CONTROL_PLANE_API_KEY='...'
+export MCP_SERVER_URL='http://127.0.0.1:18788/mcp'
+tunnel-client doctor --explain
+tunnel-client run
 ```
 
-By default chat2sbx expects:
-
-```text
-Tunnel client   ~/.local/bin/tunnel-client
-Tunnel ID       ~/.secrets/tunnel-client/tunnel-id
-Tunnel key      ~/.secrets/tunnel-client/key
-```
-
-Override these locations with environment variables when your setup differs. See [Configuration](#configuration).
+`tunnel-client` also supports its official profile/`init` workflow. Keep tunnel credentials in the mechanism recommended by OpenAI rather than in chat2sbx configuration.
 
 ## Example workflow
 
@@ -177,7 +172,7 @@ chat2sbx is designed around a simple boundary: **the agent is powerful inside th
 - Host access is disabled by default. Only paths below explicitly configured roots can be approved for `clone` or `direct` mode.
 - The MCP server has no built-in authentication and binds to loopback by default. Do not expose it directly to an untrusted network.
 - `sandbox_expose` publishes a sandbox port without adding authentication; treat the exposed service accordingly.
-- Tunnel credentials and internal CodexPro bearer tokens are not returned through MCP.
+- chat2sbx does not read tunnel credentials; internal CodexPro bearer tokens are not returned through MCP.
 
 Read [Architecture](./docs/architecture.md) for the canonical technical model and [Security](./SECURITY.md) for vulnerability reporting and expected security boundaries.
 
@@ -185,11 +180,11 @@ Read [Architecture](./docs/architecture.md) for the canonical technical model an
 
 ```text
 chat2sbx setup                         Check prerequisites and prepare the sandbox template
-chat2sbx serve                         Run the MCP gateway and tunnel client in the foreground
-chat2sbx status                        Show service, MCP, and tunnel readiness
+chat2sbx serve                         Run the local MCP gateway in the foreground
+chat2sbx status                        Show service and MCP readiness
 chat2sbx workspace list                List known workspaces
 chat2sbx workspace add <path>          Register a host workspace
-chat2sbx approval list                 List pending host-path approvals
+chat2sbx approval list                 List workspace approval history
 chat2sbx approval approve <id>         Approve a host-path request
 chat2sbx approval reject <id>          Reject a host-path request
 ```
@@ -207,9 +202,6 @@ The defaults are intentionally small. `.env.example` contains the complete set o
 | `CHAT2SBX_WORKSPACE_ROOT`       | `<data root>/workspaces`      | Managed workspace directory                |
 | `CHAT2SBX_DATABASE_PATH`        | `<state dir>/chat2sbx.sqlite` | SQLite state database                      |
 | `CHAT2SBX_ALLOWED_HOST_ROOTS`   | disabled                      | Roots eligible for host workspace approval |
-| `CHAT2SBX_ENABLE_TUNNEL`        | `1`                           | Set to `0` for local-only mode             |
-| `CHAT2SBX_TUNNEL_CLIENT`        | `~/.local/bin/tunnel-client`  | Secure MCP Tunnel client path              |
-| `CHAT2SBX_SECRET_DIR`           | `~/.secrets/tunnel-client`    | Tunnel ID/key directory                    |
 | `CHAT2SBX_MAX_ACTIVE_SANDBOXES` | `unlimited`                   | Optional active sandbox limit              |
 
 The same sandbox limit can be stored in `~/.chat2sbx/config.json` as `maxActiveSandboxes`; the environment variable takes precedence. `chat2sbx status` shows the effective limit and active count. Configuration is read when `chat2sbx serve` starts.

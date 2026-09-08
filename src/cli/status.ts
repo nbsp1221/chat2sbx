@@ -35,21 +35,11 @@ export async function status(config: RuntimeConfig): Promise<boolean> {
   }
 
   const mcpReady = await isReady(`http://${config.host}:${config.port}/healthz`);
-  let tunnelState = 'disabled';
-  if (config.tunnelEnabled) {
-    try {
-      const healthUrl = (await readFile(config.tunnelHealthUrlPath, 'utf8')).trim();
-      tunnelState = (await isReady(`${healthUrl}/readyz`)) ? 'ready' : 'not ready';
-    } catch {
-      tunnelState = 'not ready';
-    }
-  }
 
   console.log(`Service  running (PID ${pid})`);
   console.log(`MCP      ${mcpReady ? `ready at ${config.host}:${config.port}` : 'not ready'}`);
-  console.log(`Tunnel   ${tunnelState}`);
   console.log(`Sandboxes ${activeSandboxes} active / ${sandboxLimit} max`);
-  return mcpReady && tunnelState !== 'not ready';
+  return mcpReady;
 }
 
 function countActiveSandboxes(databasePath: string): number {

@@ -65,7 +65,7 @@ test('uses the documented runtime locations without enabling extra service polic
   });
 
   expect(config.runtimePidPath).toBe('/tmp/chat2sbx-config-test/.chat2sbx/state/runtime.pid');
-  expect(config.tunnelHealthUrlPath).toBe('/tmp/chat2sbx-config-test/.chat2sbx/state/health.url');
-  expect(config.tunnelEnabled).toBe(true);
+  expect('tunnelEnabled' in config).toBe(false);
+  expect('tunnelClient' in config).toBe(false);
   expect('restart' in config).toBe(false);
 });

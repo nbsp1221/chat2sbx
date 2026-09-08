@@ -1,11 +1,20 @@
 import { execFile } from 'node:child_process';
-import { access, mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { RuntimeConfig } from '../config.js';
 
 const execFileAsync = promisify(execFile);
+
+function isErrno(error: unknown, code: string): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    error.code === code
+  );
+}
 
 interface TemplateImage {
   readonly repository: string;
@@ -24,22 +33,22 @@ async function templateExists(config: RuntimeConfig): Promise<boolean> {
   );
 }
 
-async function assertTunnelFiles(config: RuntimeConfig): Promise<void> {
-  if (!config.tunnelEnabled) {
-    return;
-  }
-  for (const requiredPath of [config.tunnelClient, config.tunnelKeyPath, config.tunnelIdPath]) {
-    try {
-      await access(requiredPath);
-    } catch {
-      throw new Error(`Missing required tunnel file: ${requiredPath}`);
+async function assertSbxAvailable(config: RuntimeConfig): Promise<void> {
+  try {
+    await execFileAsync(config.sbxBinary, ['version']);
+  } catch (error) {
+    if (isErrno(error, 'ENOENT')) {
+      throw new Error(
+        'Docker Sandboxes (sbx) was not found. Install Docker Sandboxes and ensure `sbx` is available on PATH.',
+        { cause: error },
+      );
     }
+    throw error;
   }
 }
 
 export async function setup(config: RuntimeConfig): Promise<void> {
-  await assertTunnelFiles(config);
-  await execFileAsync(config.sbxBinary, ['version']);
+  await assertSbxAvailable(config);
   if (await templateExists(config)) {
     console.log(`Sandbox template ready: ${config.sandboxTemplate}`);
     console.log('chat2sbx setup complete');

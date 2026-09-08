@@ -37,10 +37,10 @@ export function createCli(): CAC {
     .action(() => setup(loadRuntimeConfig()));
 
   cli
-    .command('serve', 'Run the MCP gateway and Secure MCP Tunnel in the foreground')
+    .command('serve', 'Run the local MCP gateway in the foreground')
     .action(() => serve(loadRuntimeConfig()));
 
-  cli.command('status', 'Show service, MCP, and tunnel readiness').action(async () => {
+  cli.command('status', 'Show service and MCP readiness').action(async () => {
     if (!(await status(loadRuntimeConfig()))) {
       process.exitCode = 1;
     }
