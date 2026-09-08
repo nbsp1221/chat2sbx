@@ -60,7 +60,7 @@ function countActiveSandboxes(databasePath: string): number {
   try {
     const row = database
       .prepare(
-        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying')",
+        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL)",
       )
       .get();
     return Number(row?.count ?? 0);

@@ -261,7 +261,31 @@ test('routes full shell and private Docker only into a real microVM', async () =
     const destroyed = await callTool(url, 15, 'sandbox_destroy', { sandbox_id: sandboxId });
     expect((destroyed.structuredContent as { status: string }).status).toBe('destroyed');
     sandboxId = undefined;
-    expect(workspaces.list('local-owner')[0]?.status).toBe('retained');
+    const retainedWorkspace = workspaces
+      .list('local-owner')
+      .find((workspace) => workspace.id === created.sandbox.workspace.id);
+    expect(retainedWorkspace?.status).toBe('retained');
+    if (!retainedWorkspace?.retainedUntil) {
+      throw new Error('Expected the managed workspace to have a retention deadline');
+    }
+
+    const raceService = new SandboxService({
+      config: appConfig,
+      database,
+      driver,
+      now: () => retainedWorkspace.retainedUntil ?? 0,
+      workspaces,
+    });
+    const replacementPromise = raceService.create('local-owner', {
+      workspaceId: retainedWorkspace.id,
+    });
+    expect((await raceService.reap()).trashed).toEqual([]);
+    sandboxId = (await replacementPromise).sandbox?.id;
+    if (!sandboxId) {
+      throw new Error('Expected a replacement sandbox');
+    }
+    await raceService.destroy('local-owner', sandboxId);
+    sandboxId = undefined;
 
     const hostRepository = path.join(allowedRoot, 'repository');
     execFileSync('git', ['clone', '--quiet', '--no-hardlinks', process.cwd(), hostRepository]);
@@ -288,6 +312,46 @@ test('routes full shell and private Docker only into a real microVM', async () =
     ).toBe(false);
 
     await callTool(url, 18, 'sandbox_destroy', { sandbox_id: sandboxId });
+    sandboxId = undefined;
+
+    const directWorkspace = workspaces.registerHost('local-owner', hostRepository, 'direct');
+    const hostDisabledWorkspaces = new WorkspaceService({
+      allowedHostRoots: [],
+      dataRoot: appConfig.dataRoot,
+      database,
+      workspaceRoot: appConfig.workspaceRoot,
+    });
+    const hostDisabledSandboxes = new SandboxService({
+      config: { ...appConfig, allowedHostRoots: [] },
+      database,
+      driver,
+      workspaces: hostDisabledWorkspaces,
+    });
+    await expect(
+      hostDisabledSandboxes.create('local-owner', { workspaceId: directWorkspace.id }),
+    ).rejects.toThrow(/Host workspaces are disabled/);
+
+    const directCreateResult = await callTool(url, 19, 'sandbox_create', {
+      workspace_id: directWorkspace.id,
+    });
+    const directCreated = directCreateResult.structuredContent as {
+      sandbox: { id: string };
+      status: string;
+    };
+    expect(directCreated.status).toBe('created');
+    sandboxId = directCreated.sandbox.id;
+
+    const directWrite = await callTool(url, 20, 'write', {
+      content: 'direct write-through\n',
+      path: 'direct-proof.txt',
+      sandbox_id: sandboxId,
+    });
+    expect(directWrite.isError).not.toBe(true);
+    expect(fs.readFileSync(path.join(hostRepository, 'direct-proof.txt'), 'utf8')).toBe(
+      'direct write-through\n',
+    );
+
+    await callTool(url, 21, 'sandbox_destroy', { sandbox_id: sandboxId });
     sandboxId = undefined;
   } finally {
     if (sandboxId) {

@@ -27,6 +27,11 @@ export class HostPathPolicy {
   }
 
   resolveAndValidate(requestedPath: string): string {
+    if (this.#allowedRoots.length === 0) {
+      throw new Error(
+        'Host workspaces are disabled; configure CHAT2SBX_ALLOWED_HOST_ROOTS to enable them',
+      );
+    }
     const expanded =
       requestedPath === '~'
         ? os.homedir()

@@ -142,7 +142,13 @@ export class StateDatabase {
 
   listExpiredRetainedWorkspaces(now: number): readonly Workspace[] {
     return this.#database
-      .prepare("SELECT * FROM workspaces WHERE status = 'retained' AND retained_until <= ?")
+      .prepare(`SELECT * FROM workspaces
+      WHERE status = 'retained' AND retained_until <= ?
+      AND NOT EXISTS (
+        SELECT 1 FROM sandboxes
+        WHERE sandboxes.workspace_id = workspaces.id
+        AND sandboxes.status IN ('creating', 'running', 'destroying', 'failed')
+      )`)
       .all(now)
       .map(workspaceFromRow);
   }
@@ -208,7 +214,7 @@ export class StateDatabase {
       if (maxActiveSandboxes !== undefined) {
         const row = this.#database
           .prepare(
-            "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying')",
+            "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL)",
           )
           .get();
         if (Number(row?.count ?? 0) >= maxActiveSandboxes) {
@@ -265,10 +271,10 @@ export class StateDatabase {
     return row ? sandboxFromRow(row) : undefined;
   }
 
-  findActiveSandbox(ownerId: string, workspaceId: string): Sandbox | undefined {
+  findUnfinishedSandbox(ownerId: string, workspaceId: string): Sandbox | undefined {
     const row = this.#database
       .prepare(`SELECT * FROM sandboxes
-      WHERE owner_id = ? AND workspace_id = ? AND status IN ('creating', 'running', 'destroying') ORDER BY created_at DESC LIMIT 1`)
+      WHERE owner_id = ? AND workspace_id = ? AND status IN ('creating', 'running', 'destroying', 'failed') ORDER BY created_at DESC LIMIT 1`)
       .get(ownerId, workspaceId);
     return row ? sandboxFromRow(row) : undefined;
   }
@@ -285,7 +291,7 @@ export class StateDatabase {
   listActiveSandboxes(): readonly Sandbox[] {
     return this.#database
       .prepare(
-        "SELECT * FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') ORDER BY created_at DESC",
+        "SELECT * FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL) ORDER BY created_at DESC",
       )
       .all()
       .map(sandboxFromRow);
@@ -294,7 +300,7 @@ export class StateDatabase {
   countActiveSandboxes(): number {
     const row = this.#database
       .prepare(
-        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying')",
+        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL)",
       )
       .get();
     return Number(row?.count ?? 0);

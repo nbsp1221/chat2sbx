@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, onTestFinished, test } from 'vitest';
+import type { Sandbox, SandboxStatus } from '../../src/domain/types.js';
 import { StateDatabase } from '../../src/state/database.js';
 import { WorkspaceService } from '../../src/workspaces/service.js';
 
@@ -62,12 +63,100 @@ test('paths outside allow roots and protected paths are rejected', () => {
   );
 });
 
-test('retained managed workspaces can be attached to a new sandbox before trashing', () => {
+test('retained managed workspaces remain retained until explicitly activated', () => {
   const { service } = fixture();
   const workspace = service.createManaged('owner');
   service.retainManaged(workspace, 10_000);
 
-  const restored = service.getApproved('owner', workspace.id);
-  expect(restored.status).toBe('approved');
-  expect(restored.root).toBe(workspace.root);
+  const available = service.getAvailable('owner', workspace.id);
+  expect(available.status).toBe('retained');
+  expect(available.retainedUntil).toBe(10_000);
+
+  const activated = service.activate(available);
+  expect(activated.status).toBe('approved');
+  expect(activated.retainedUntil).toBeUndefined();
+  expect(service.getAvailable('owner', workspace.id).status).toBe('approved');
+});
+
+test('host workspaces are disabled without an explicit allowed root', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-disabled-host-'));
+  const database = new StateDatabase(':memory:');
+  const service = new WorkspaceService({
+    allowedHostRoots: [],
+    dataRoot: path.join(base, 'data'),
+    database,
+    workspaceRoot: path.join(base, 'data', 'workspaces'),
+  });
+
+  try {
+    expect(() => service.requestHost('owner', path.join(base, 'missing'), 'clone')).toThrow(
+      /Host workspaces are disabled/,
+    );
+  } finally {
+    database.close();
+    fs.rmSync(base, { force: true, recursive: true });
+  }
+});
+
+test('existing host workspaces follow the current allowed roots', () => {
+  const { base, database, service } = fixture();
+  const repository = path.join(base, 'allowed', 'existing');
+  fs.mkdirSync(repository);
+  const workspace = service.registerHost('owner', repository, 'direct');
+  const disabled = new WorkspaceService({
+    allowedHostRoots: [],
+    dataRoot: path.join(base, 'disabled-data'),
+    database,
+    workspaceRoot: path.join(base, 'disabled-data', 'workspaces'),
+  });
+
+  expect(() => disabled.getAvailable('owner', workspace.id)).toThrow(
+    /Host workspaces are disabled/,
+  );
+});
+
+test.each<SandboxStatus>(['creating', 'running', 'destroying', 'failed'])(
+  'expired retained workspaces with a %s sandbox are not trashed',
+  (status) => {
+    const { database, service } = fixture();
+    const workspace = service.createManaged('owner');
+    service.retainManaged(workspace, 1_000);
+    const unfinished: Sandbox = {
+      id: `sbx_${status}`,
+      ownerId: 'owner',
+      workspaceId: workspace.id,
+      runtimeName: `runtime-${status}`,
+      status,
+      createdAt: 900,
+      lastActivityAt: 900,
+      expiresAt: 2_000,
+    };
+    database.insertSandboxWithinLimit(unfinished);
+
+    expect(service.trashExpired(1_000)).toEqual([]);
+    expect(service.getAvailable('owner', workspace.id).status).toBe('retained');
+    expect(fs.existsSync(workspace.root)).toBe(true);
+  },
+);
+
+test('expired retained workspaces are trashed after their sandbox is destroyed', () => {
+  const { database, service } = fixture();
+  const workspace = service.createManaged('owner');
+  service.retainManaged(workspace, 1_000);
+  database.insertSandboxWithinLimit({
+    id: 'sbx_destroyed',
+    ownerId: 'owner',
+    workspaceId: workspace.id,
+    runtimeName: 'runtime-destroyed',
+    status: 'destroyed',
+    createdAt: 900,
+    lastActivityAt: 900,
+    expiresAt: 950,
+    destroyedAt: 975,
+  });
+
+  expect(service.trashExpired(1_000)).toEqual([
+    expect.objectContaining({ id: workspace.id, status: 'trashed' }),
+  ]);
+  expect(service.list('owner')[0]?.status).toBe('trashed');
 });

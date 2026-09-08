@@ -143,7 +143,7 @@ bash_poll
 | `clone`   | Private clone of an approved host repository     | Safe default for existing repositories              |
 | `direct`  | Read/write access to one approved host directory | Work that must immediately affect the host checkout |
 
-`clone` is the default for approved host repositories. Use `direct` only when you intentionally want sandbox commands to modify the approved host directory.
+Host workspaces are disabled by default. Set `CHAT2SBX_ALLOWED_HOST_ROOTS` to opt in, then approve or register paths below those roots. Existing registrations are usable only while their paths remain below the currently configured roots. `clone` is the default for approved host repositories. Use `direct` only when you intentionally want sandbox commands to modify the approved host directory.
 
 ## Resource controls and global instructions
 
@@ -160,7 +160,7 @@ Global instructions are advisory text for agents. They are not copied into a wor
 chat2sbx is designed around a simple boundary: **the agent is powerful inside the microVM, not on the host.**
 
 - CodexPro and unrestricted Bash run inside Docker Sandboxes, never directly on the host.
-- Host paths are not mounted unless they are managed by chat2sbx or explicitly approved.
+- Host access is disabled by default. Only paths below explicitly configured roots can be approved for `clone` or `direct` mode.
 - The MCP server has no built-in authentication and binds to loopback by default. Do not expose it directly to an untrusted network.
 - `sandbox_expose` publishes a sandbox port without adding authentication; treat the exposed service accordingly.
 - Tunnel credentials and internal CodexPro bearer tokens are not returned through MCP.
@@ -192,7 +192,7 @@ The defaults are intentionally small. `.env.example` contains the complete set o
 | `CHAT2SBX_STATE_DIR`            | `<data root>/state`           | Runtime state directory                    |
 | `CHAT2SBX_WORKSPACE_ROOT`       | `<data root>/workspaces`      | Managed workspace directory                |
 | `CHAT2SBX_DATABASE_PATH`        | `<state dir>/chat2sbx.sqlite` | SQLite state database                      |
-| `CHAT2SBX_ALLOWED_HOST_ROOTS`   | `~/repositories`              | Roots eligible for host workspace approval |
+| `CHAT2SBX_ALLOWED_HOST_ROOTS`   | disabled                      | Roots eligible for host workspace approval |
 | `CHAT2SBX_ENABLE_TUNNEL`        | `1`                           | Set to `0` for local-only mode             |
 | `CHAT2SBX_TUNNEL_CLIENT`        | `~/.local/bin/tunnel-client`  | Secure MCP Tunnel client path              |
 | `CHAT2SBX_SECRET_DIR`           | `~/.secrets/tunnel-client`    | Tunnel ID/key directory                    |

@@ -103,8 +103,7 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
   const workspaceRoot = resolvePath(
     environment.CHAT2SBX_WORKSPACE_ROOT ?? path.join(dataRoot, 'workspaces'),
   );
-  const defaultAllowedRoot = path.join(os.homedir(), 'repositories');
-  const allowedHostRoots = (environment.CHAT2SBX_ALLOWED_HOST_ROOTS ?? defaultAllowedRoot)
+  const allowedHostRoots = (environment.CHAT2SBX_ALLOWED_HOST_ROOTS ?? '')
     .split(path.delimiter)
     .filter(Boolean)
     .map(resolvePath);

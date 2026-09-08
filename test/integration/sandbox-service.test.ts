@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, onTestFinished, test } from 'vitest';
 import type { AppConfig } from '../../src/config.js';
-import type { SandboxCreateResult, SandboxSummary } from '../../src/domain/types.js';
+import type { Sandbox, SandboxCreateResult, SandboxSummary } from '../../src/domain/types.js';
 import type { PublishedPort, RuntimeInfo, SandboxDriver } from '../../src/sandbox/sbx-driver.js';
 import { SandboxService } from '../../src/sandbox/service.js';
 import { StateDatabase } from '../../src/state/database.js';
@@ -12,8 +12,12 @@ import { WorkspaceService } from '../../src/workspaces/service.js';
 class FakeDriver implements SandboxDriver {
   readonly runtimes = new Map<string, RuntimeInfo>();
   createCalls = 0;
+  createWait: Promise<void> | undefined;
   readonly memoryCalls: Array<number | undefined> = [];
   healthy = true;
+  healthError: Error | undefined;
+  removeError: Error | undefined;
+  removeWait: Promise<void> | undefined;
   removeCalls = 0;
   startCalls = 0;
 
@@ -21,7 +25,7 @@ class FakeDriver implements SandboxDriver {
     return Promise.resolve();
   }
 
-  create(
+  async create(
     name: string,
     _workspace: unknown,
     memoryBytes?: number,
@@ -29,7 +33,8 @@ class FakeDriver implements SandboxDriver {
     this.createCalls += 1;
     this.memoryCalls.push(memoryBytes);
     this.runtimes.set(name, { name, status: 'running' });
-    return Promise.resolve({ endpoint: 'http://127.0.0.1:1234/mcp', runtimeRoot: '/workspace' });
+    await this.createWait;
+    return { endpoint: 'http://127.0.0.1:1234/mcp', runtimeRoot: '/workspace' };
   }
 
   expose(_name: string, sandboxPort: number): Promise<PublishedPort> {
@@ -44,10 +49,15 @@ class FakeDriver implements SandboxDriver {
     return Promise.resolve([...this.runtimes.values()]);
   }
 
-  remove(name: string): Promise<void> {
+  async remove(name: string): Promise<void> {
     this.removeCalls += 1;
+    const wait = this.removeWait;
+    this.removeWait = undefined;
+    await wait;
+    if (this.removeError) {
+      throw this.removeError;
+    }
     this.runtimes.delete(name);
-    return Promise.resolve();
   }
 
   startCodexPro(): Promise<void> {
@@ -56,7 +66,7 @@ class FakeDriver implements SandboxDriver {
   }
 
   waitUntilHealthy(): Promise<void> {
-    return Promise.resolve();
+    return this.healthError ? Promise.reject(this.healthError) : Promise.resolve();
   }
 }
 
@@ -137,6 +147,11 @@ test('explicit sandbox ids are reusable and one active sandbox is kept per works
   expect(destroyed.status).toBe('destroyed');
   expect(driver.removeCalls).toBe(1);
   expect(workspaces.list('owner')[0]?.status).toBe('retained');
+
+  const replacement = sandboxFrom(
+    await service.create('owner', { workspaceId: first.workspace.id }),
+  );
+  expect(replacement.workspace.status).toBe('approved');
 });
 
 test('applies an optional active sandbox limit without blocking reuse or later creation', async () => {
@@ -159,6 +174,31 @@ test('applies an optional active sandbox limit without blocking reuse or later c
 
   await limited.destroy('owner', first.id);
   await expect(limited.create('owner', {})).resolves.toMatchObject({ status: 'created' });
+});
+
+test('a sandbox limit failure preserves a retained workspace and its deadline', async () => {
+  const { appConfig, database, driver, service, workspaces } = fixture('chat2sbx-retained-limit-');
+  const retainedSandbox = sandboxFrom(await service.create('owner', {}));
+  await service.destroy('owner', retainedSandbox.id);
+  const retained = workspaces.getAvailable('owner', retainedSandbox.workspace.id);
+  const retainedUntil = retained.retainedUntil;
+
+  const occupyingSandbox = await service.create('owner', {});
+  expect(occupyingSandbox.status).toBe('created');
+  const limited = new SandboxService({
+    config: { ...appConfig, maxActiveSandboxes: 1 },
+    database,
+    driver,
+    workspaces,
+  });
+
+  await expect(
+    limited.create('owner', { workspaceId: retainedSandbox.workspace.id }),
+  ).rejects.toThrow(/1 maximum/);
+  expect(workspaces.getAvailable('owner', retainedSandbox.workspace.id)).toMatchObject({
+    retainedUntil,
+    status: 'retained',
+  });
 });
 
 test('passes an explicit memory limit and rejects changing it on reuse', async () => {
@@ -214,7 +254,218 @@ test('an unavailable runtime becomes an explicit failed sandbox without automati
     /destroy this sandbox and create a new one/,
   );
   expect(driver.startCalls).toBe(1);
+  expect(driver.removeCalls).toBe(1);
+  expect(driver.runtimes.size).toBe(0);
   expect(service.list('owner')[0]?.status).toBe('failed');
+});
+
+test('a failed creation remains pending when runtime cleanup fails', async () => {
+  const { appConfig, database, driver, workspaces } = fixture('chat2sbx-create-cleanup-');
+  const limited = new SandboxService({
+    config: { ...appConfig, maxActiveSandboxes: 1 },
+    database,
+    driver,
+    workspaces,
+  });
+  driver.healthError = new Error('health failed');
+  driver.removeError = new Error('cleanup failed');
+
+  await expect(limited.create('owner', {})).rejects.toThrow('health failed');
+
+  const failed = limited.list('owner')[0];
+  expect(failed).toMatchObject({
+    status: 'failed',
+    error: 'health failed; runtime cleanup failed: cleanup failed',
+  });
+  expect(failed?.destroyedAt).toBeUndefined();
+  expect(database.countActiveSandboxes()).toBe(1);
+  expect(driver.runtimes.size).toBe(1);
+});
+
+test('destroy waits for sandbox creation before removing it', async () => {
+  const { driver, service } = fixture('chat2sbx-create-destroy-');
+  let finishCreation: (() => void) | undefined;
+  driver.createWait = new Promise<void>((resolve) => {
+    finishCreation = resolve;
+  });
+
+  const creation = service.create('owner', {});
+  while (driver.createCalls === 0) {
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+  }
+  const creating = service.list('owner')[0];
+  if (!creating || !finishCreation) {
+    throw new Error('Expected sandbox creation to be pending');
+  }
+  let destroyCompleted = false;
+  const destruction = service.destroy('owner', creating.id).then((result) => {
+    destroyCompleted = true;
+    return result;
+  });
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  expect(destroyCompleted).toBe(false);
+
+  finishCreation();
+  await expect(creation).resolves.toMatchObject({ status: 'created' });
+  await expect(destruction).resolves.toMatchObject({ status: 'destroyed' });
+  expect(service.get('owner', creating.id).status).toBe('destroyed');
+});
+
+test('destroy waits for failed creation cleanup before removing its record', async () => {
+  const { driver, service } = fixture('chat2sbx-create-failure-destroy-');
+  driver.healthError = new Error('health failed');
+  let finishCleanup: (() => void) | undefined;
+  driver.removeWait = new Promise<void>((resolve) => {
+    finishCleanup = resolve;
+  });
+
+  const creation = service.create('owner', {});
+  while (driver.removeCalls === 0) {
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+  }
+  const failed = service.list('owner')[0];
+  if (!failed || !finishCleanup) {
+    throw new Error('Expected failed sandbox cleanup to be pending');
+  }
+  let destroyCompleted = false;
+  const destruction = service.destroy('owner', failed.id).then((result) => {
+    destroyCompleted = true;
+    return result;
+  });
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  expect(destroyCompleted).toBe(false);
+
+  finishCleanup();
+  await expect(creation).rejects.toThrow('health failed');
+  await expect(destruction).resolves.toMatchObject({ status: 'destroyed' });
+  expect(service.get('owner', failed.id).status).toBe('destroyed');
+});
+
+test('an unhealthy sandbox cannot be reused while its runtime is being removed', async () => {
+  const { appConfig, database, driver, workspaces } = fixture('chat2sbx-unhealthy-race-');
+  const limited = new SandboxService({
+    config: { ...appConfig, maxActiveSandboxes: 1 },
+    database,
+    driver,
+    workspaces,
+  });
+  const created = sandboxFrom(await limited.create('owner', {}));
+  let finishRemoval: (() => void) | undefined;
+  driver.removeWait = new Promise<void>((resolve) => {
+    finishRemoval = resolve;
+  });
+  driver.healthy = false;
+
+  const healthCheck = limited.readyForTool('owner', created.id);
+  while (driver.removeCalls === 0) {
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+  }
+
+  await expect(limited.create('owner', {})).rejects.toThrow(/Active sandbox limit reached/);
+  await expect(limited.create('owner', { workspaceId: created.workspace.id })).rejects.toThrow(
+    /sandbox in failed state/,
+  );
+  if (!finishRemoval) {
+    throw new Error('Expected runtime removal to be waiting');
+  }
+  finishRemoval();
+  await expect(healthCheck).rejects.toThrow(/destroy this sandbox and create a new one/);
+});
+
+test('restart preserves a failed sandbox while its unhealthy runtime cleanup is pending', async () => {
+  const { appConfig, database, driver, service, workspaces } = fixture(
+    'chat2sbx-unhealthy-restart-',
+  );
+  const created = sandboxFrom(await service.create('owner', {}));
+  database.saveSandbox({
+    ...database.getSandbox(created.id, 'owner')!,
+    status: 'failed',
+    endpoint: undefined,
+    authToken: undefined,
+    error: 'CodexPro is unavailable; destroy this sandbox and create a new one',
+  });
+
+  const restarted = new SandboxService({ config: appConfig, database, driver, workspaces });
+  await restarted.reconcile();
+
+  const reconciled = restarted.get('owner', created.id);
+  expect(reconciled).toMatchObject({
+    status: 'failed',
+    error: 'CodexPro is unavailable; destroy this sandbox and create a new one',
+  });
+  expect(typeof reconciled.destroyedAt).toBe('number');
+});
+
+test('a failed sandbox blocks only its workspace until explicit destruction', async () => {
+  const { driver, service } = fixture('chat2sbx-failed-workspace-');
+  const failed = sandboxFrom(await service.create('owner', {}));
+  driver.healthy = false;
+  await expect(service.readyForTool('owner', failed.id)).rejects.toThrow(/destroy this sandbox/);
+  driver.healthy = true;
+
+  await expect(service.create('owner', { workspaceId: failed.workspace.id })).rejects.toThrow(
+    /sandbox in failed state/,
+  );
+  await expect(service.create('owner', {})).resolves.toMatchObject({ status: 'created' });
+
+  await service.destroy('owner', failed.id);
+  await expect(
+    service.create('owner', { workspaceId: failed.workspace.id }),
+  ).resolves.toMatchObject({ status: 'created' });
+});
+
+test('destroying a legacy failed record does not conflict with its running replacement', async () => {
+  let now = 1_000;
+  const { appConfig, database, service, workspaces } = fixture(
+    'chat2sbx-legacy-failed-',
+    () => now,
+  );
+  const workspace = workspaces.createManaged('owner');
+  const base: Omit<Sandbox, 'id' | 'runtimeName' | 'status'> = {
+    ownerId: 'owner',
+    workspaceId: workspace.id,
+    createdAt: 1_000,
+    lastActivityAt: 1_000,
+    expiresAt: 2_000,
+  };
+  const failed: Sandbox = {
+    ...base,
+    id: 'sbx_failed',
+    runtimeName: 'runtime-failed',
+    status: 'failed',
+  };
+  const running: Sandbox = {
+    ...base,
+    id: 'sbx_running',
+    runtimeName: 'runtime-running',
+    runtimeRoot: '/workspace',
+    endpoint: 'http://127.0.0.1:1234/mcp',
+    authToken: 'token',
+    status: 'running',
+  };
+  database.insertSandboxWithinLimit(failed);
+  database.insertSandboxWithinLimit(running);
+
+  await expect(service.destroy('owner', failed.id)).resolves.toMatchObject({ status: 'destroyed' });
+  expect(service.get('owner', running.id).status).toBe('running');
+  expect(workspaces.getAvailable('owner', workspace.id).status).toBe('approved');
+
+  now = 50_000;
+  await service.destroy('owner', running.id);
+  expect(workspaces.getAvailable('owner', workspace.id)).toMatchObject({
+    retainedUntil: now + appConfig.workspaceRetentionMs,
+    status: 'retained',
+  });
 });
 
 test('every completed tool call renews the idle deadline without an absolute lifetime', async () => {
