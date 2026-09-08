@@ -125,16 +125,20 @@ export class WorkspaceService {
     return { ...approval, status: 'rejected', decidedAt };
   }
 
-  getApproved(ownerId: string, workspaceId: string): Workspace {
+  getAvailable(ownerId: string, workspaceId: string): Workspace {
     const workspace = this.#database.getWorkspace(workspaceId, ownerId);
     if (!workspace || workspace.status === 'trashed') {
       throw new Error(`Unknown or unavailable workspace: ${workspaceId}`);
     }
-    if (workspace.status === 'retained') {
-      this.#database.updateWorkspaceStatus(workspace.id, 'approved');
-      return { ...workspace, status: 'approved', retainedUntil: undefined };
-    }
     return workspace;
+  }
+
+  activate(workspace: Workspace): Workspace {
+    if (workspace.status !== 'retained') {
+      return workspace;
+    }
+    this.#database.updateWorkspaceStatus(workspace.id, 'approved');
+    return { ...workspace, status: 'approved', retainedUntil: undefined };
   }
 
   list(ownerId: string): readonly Workspace[] {

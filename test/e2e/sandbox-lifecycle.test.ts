@@ -289,6 +289,30 @@ test('routes full shell and private Docker only into a real microVM', async () =
 
     await callTool(url, 18, 'sandbox_destroy', { sandbox_id: sandboxId });
     sandboxId = undefined;
+
+    const directWorkspace = workspaces.registerHost('local-owner', hostRepository, 'direct');
+    const directCreateResult = await callTool(url, 19, 'sandbox_create', {
+      workspace_id: directWorkspace.id,
+    });
+    const directCreated = directCreateResult.structuredContent as {
+      sandbox: { id: string };
+      status: string;
+    };
+    expect(directCreated.status).toBe('created');
+    sandboxId = directCreated.sandbox.id;
+
+    const directWrite = await callTool(url, 20, 'write', {
+      content: 'direct write-through\n',
+      path: 'direct-proof.txt',
+      sandbox_id: sandboxId,
+    });
+    expect(directWrite.isError).not.toBe(true);
+    expect(fs.readFileSync(path.join(hostRepository, 'direct-proof.txt'), 'utf8')).toBe(
+      'direct write-through\n',
+    );
+
+    await callTool(url, 21, 'sandbox_destroy', { sandbox_id: sandboxId });
+    sandboxId = undefined;
   } finally {
     if (sandboxId) {
       await sandboxes.destroy('local-owner', sandboxId).catch(() => undefined);

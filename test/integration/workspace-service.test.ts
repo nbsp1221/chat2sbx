@@ -62,12 +62,37 @@ test('paths outside allow roots and protected paths are rejected', () => {
   );
 });
 
-test('retained managed workspaces can be attached to a new sandbox before trashing', () => {
+test('retained managed workspaces remain retained until explicitly activated', () => {
   const { service } = fixture();
   const workspace = service.createManaged('owner');
   service.retainManaged(workspace, 10_000);
 
-  const restored = service.getApproved('owner', workspace.id);
-  expect(restored.status).toBe('approved');
-  expect(restored.root).toBe(workspace.root);
+  const available = service.getAvailable('owner', workspace.id);
+  expect(available.status).toBe('retained');
+  expect(available.retainedUntil).toBe(10_000);
+
+  const activated = service.activate(available);
+  expect(activated.status).toBe('approved');
+  expect(activated.retainedUntil).toBeUndefined();
+  expect(service.getAvailable('owner', workspace.id).status).toBe('approved');
+});
+
+test('host workspaces are disabled without an explicit allowed root', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-disabled-host-'));
+  const database = new StateDatabase(':memory:');
+  const service = new WorkspaceService({
+    allowedHostRoots: [],
+    dataRoot: path.join(base, 'data'),
+    database,
+    workspaceRoot: path.join(base, 'data', 'workspaces'),
+  });
+
+  try {
+    expect(() => service.requestHost('owner', path.join(base, 'missing'), 'clone')).toThrow(
+      /Host workspaces are disabled/,
+    );
+  } finally {
+    database.close();
+    fs.rmSync(base, { force: true, recursive: true });
+  }
 });

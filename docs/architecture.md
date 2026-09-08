@@ -71,6 +71,7 @@ It requires local registration or approval and should be used only when immediat
 ## Approval model
 
 The MCP API can request a host path but cannot approve it.
+Host access is disabled by default. `CHAT2SBX_ALLOWED_HOST_ROOTS` must explicitly configure one or more roots before chat2sbx inspects a requested host path.
 The path is canonicalized with `realpath`, must be a directory strictly below an allowed root, and is rejected when it contains protected credential-directory components.
 A successful request creates an `approval_required` response with a stable approval ID.
 Only the local CLI can approve or reject it, after which MCP callers refer to the resulting `workspace_id` instead of resubmitting a raw path.
@@ -79,7 +80,7 @@ Only the local CLI can approve or reject it, after which MCP callers refer to th
 
 1. Read `AGENTS.md` from the configured data directory when it exists so an unreadable file fails before sandbox creation.
 2. Resolve an approved workspace or create a managed workspace.
-3. Reuse its active sandbox if one exists.
+3. Reuse its running sandbox if one exists. Any other unfinished sandbox, including `failed`, must be explicitly destroyed before the same workspace can be used again.
 4. Atomically enforce the optional active-sandbox count limit and persist a `creating` record before invoking external commands.
 5. Create a named `shell` microVM from the pinned CodexPro template with Docker Sandboxes resource defaults, an optional caller-supplied memory limit, and one dynamic loopback port.
 6. Generate a random CodexPro bearer token.
@@ -87,7 +88,7 @@ Only the local CLI can approve or reject it, after which MCP callers refer to th
 8. Verify its authenticated health endpoint and persist the endpoint and token in the mode-`0600` SQLite database.
 9. Return a safe summary that omits the token, endpoint, runtime name, and runtime path and includes the exact global instructions read before creation.
 
-Failures remove a partially created runtime and persist a `failed` record for diagnosis.
+Failures remove a partially created runtime and persist a visible `failed` record for diagnosis. A failed creation does not reactivate a retained managed workspace or change its retention deadline. Failed records remain in `sandbox_list` until explicitly destroyed; there is no automatic retry, replacement, hiding, or history cleanup.
 
 The same global instructions are read and returned by `sandbox_get` when an existing sandbox is opened. An absent file adds no response field; symbolic links and other non-regular entries are rejected, and any other read failure is reported. Instructions are not cached, copied into the microVM or workspace, returned by other tools, interpreted as commands, or enforced as security policy.
 
@@ -123,5 +124,6 @@ The trash directory is not emptied automatically. Host workspaces are never move
 
 At controller startup, persisted active records are reconciled with `sbx ls`.
 Any microVM left by the previous controller is removed and its sandbox record becomes `failed` because the foreground CodexPro session belonged to that controller.
-The user must destroy the failed sandbox before creating a replacement; chat2sbx does not restart CodexPro or recover the old runtime automatically.
+An unhealthy CodexPro runtime is removed immediately and its sandbox record also becomes `failed`. If runtime removal fails, the failure is recorded and explicit destruction retries it.
+The user must destroy a failed sandbox before creating a replacement for the same workspace; failures in other workspaces do not block creation. chat2sbx does not restart CodexPro or recover the old runtime automatically.
 Reconciliation completes before the MCP gateway begins listening and has no chat2sbx-imposed time limit.

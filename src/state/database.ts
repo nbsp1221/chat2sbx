@@ -265,10 +265,10 @@ export class StateDatabase {
     return row ? sandboxFromRow(row) : undefined;
   }
 
-  findActiveSandbox(ownerId: string, workspaceId: string): Sandbox | undefined {
+  findUnfinishedSandbox(ownerId: string, workspaceId: string): Sandbox | undefined {
     const row = this.#database
       .prepare(`SELECT * FROM sandboxes
-      WHERE owner_id = ? AND workspace_id = ? AND status IN ('creating', 'running', 'destroying') ORDER BY created_at DESC LIMIT 1`)
+      WHERE owner_id = ? AND workspace_id = ? AND status IN ('creating', 'running', 'destroying', 'failed') ORDER BY created_at DESC LIMIT 1`)
       .get(ownerId, workspaceId);
     return row ? sandboxFromRow(row) : undefined;
   }

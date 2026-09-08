@@ -60,7 +60,7 @@ export class SandboxService {
     const memoryBytes = request.memory ? parseMemory(request.memory) : undefined;
     let workspace: Workspace;
     if (request.workspaceId) {
-      workspace = this.#workspaces.getApproved(ownerId, request.workspaceId);
+      workspace = this.#workspaces.getAvailable(ownerId, request.workspaceId);
       if (request.workspaceMode && request.workspaceMode !== workspace.mode) {
         throw new Error(
           `workspace_mode=${request.workspaceMode} does not match approved workspace mode ${workspace.mode}`,
@@ -89,17 +89,19 @@ export class SandboxService {
       workspace = this.#workspaces.createManaged(ownerId);
     }
 
-    const active = this.#database.findActiveSandbox(ownerId, workspace.id);
-    if (active?.status === 'running') {
-      if (memoryBytes !== undefined && memoryBytes !== active.memoryBytes) {
+    const unfinished = this.#database.findUnfinishedSandbox(ownerId, workspace.id);
+    if (unfinished?.status === 'running') {
+      if (memoryBytes !== undefined && memoryBytes !== unfinished.memoryBytes) {
         throw new Error(
-          `Workspace already has sandbox ${active.id} with memory=${active.memoryBytes === undefined ? 'default' : formatMemory(active.memoryBytes)}; destroy it before changing memory`,
+          `Workspace already has sandbox ${unfinished.id} with memory=${unfinished.memoryBytes === undefined ? 'default' : formatMemory(unfinished.memoryBytes)}; destroy it before changing memory`,
         );
       }
-      return { status: 'reused', sandbox: this.#summarize(active) };
+      return { status: 'reused', sandbox: this.#summarize(unfinished) };
     }
-    if (active) {
-      throw new Error(`Workspace already has a sandbox in ${active.status} state: ${active.id}`);
+    if (unfinished) {
+      throw new Error(
+        `Workspace already has a sandbox in ${unfinished.status} state: ${unfinished.id}`,
+      );
     }
 
     const now = this.#now();
@@ -126,6 +128,7 @@ export class SandboxService {
       await this.#driver.waitUntilHealthy(runtime.endpoint, authToken);
       const running: Sandbox = { ...sandbox, ...runtime, authToken, status: 'running' };
       this.#database.saveSandbox(running);
+      workspace = this.#workspaces.activate(workspace);
       return { status: 'created', sandbox: this.#summarize(running) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -185,8 +188,22 @@ export class SandboxService {
       }
       if (!(await this.#driver.isHealthy(sandbox.endpoint, sandbox.authToken))) {
         const message = 'CodexPro is unavailable; destroy this sandbox and create a new one';
-        this.#database.saveSandbox({ ...sandbox, status: 'failed', error: message });
-        throw new Error(`${message}: ${sandboxId}`);
+        let error = message;
+        try {
+          await this.#driver.remove(sandbox.runtimeName);
+        } catch (cleanupError) {
+          const cleanupMessage =
+            cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+          error = `${message}; runtime cleanup failed: ${cleanupMessage}`;
+        }
+        this.#database.saveSandbox({
+          ...sandbox,
+          status: 'failed',
+          endpoint: undefined,
+          authToken: undefined,
+          error,
+        });
+        throw new Error(`${error}: ${sandboxId}`);
       }
       try {
         return await operation(sandbox);
@@ -286,7 +303,7 @@ export class SandboxService {
 
   #retainManagedWorkspace(workspaceId: string, removedAt: number): void {
     const workspace = this.#database.getWorkspace(workspaceId);
-    if (workspace?.kind === 'managed') {
+    if (workspace?.kind === 'managed' && workspace.status !== 'retained') {
       this.#workspaces.retainManaged(workspace, removedAt + this.#config.workspaceRetentionMs);
     }
   }
@@ -298,7 +315,9 @@ export class SandboxService {
   }
 
   async #removeSandbox(sandbox: Sandbox): Promise<SandboxSummary> {
-    this.#database.saveSandbox({ ...sandbox, status: 'destroying' });
+    if (sandbox.status !== 'failed') {
+      this.#database.saveSandbox({ ...sandbox, status: 'destroying' });
+    }
     try {
       await this.#driver.remove(sandbox.runtimeName);
     } catch (error) {
