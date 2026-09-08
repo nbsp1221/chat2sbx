@@ -268,7 +268,11 @@ test('a failed sandbox blocks only its workspace until explicit destruction', as
 });
 
 test('destroying a legacy failed record does not conflict with its running replacement', async () => {
-  const { database, service, workspaces } = fixture('chat2sbx-legacy-failed-');
+  let now = 1_000;
+  const { appConfig, database, service, workspaces } = fixture(
+    'chat2sbx-legacy-failed-',
+    () => now,
+  );
   const workspace = workspaces.createManaged('owner');
   const base: Omit<Sandbox, 'id' | 'runtimeName' | 'status'> = {
     ownerId: 'owner',
@@ -297,6 +301,14 @@ test('destroying a legacy failed record does not conflict with its running repla
 
   await expect(service.destroy('owner', failed.id)).resolves.toMatchObject({ status: 'destroyed' });
   expect(service.get('owner', running.id).status).toBe('running');
+  expect(workspaces.getAvailable('owner', workspace.id).status).toBe('approved');
+
+  now = 50_000;
+  await service.destroy('owner', running.id);
+  expect(workspaces.getAvailable('owner', workspace.id)).toMatchObject({
+    retainedUntil: now + appConfig.workspaceRetentionMs,
+    status: 'retained',
+  });
 });
 
 test('every completed tool call renews the idle deadline without an absolute lifetime', async () => {

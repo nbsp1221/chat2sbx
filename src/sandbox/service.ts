@@ -337,7 +337,9 @@ export class SandboxService {
       authToken: undefined,
     };
     this.#database.saveSandbox(destroyed);
-    this.#retainManagedWorkspace(sandbox.workspaceId, destroyedAt);
+    if (!this.#database.findUnfinishedSandbox(sandbox.ownerId, sandbox.workspaceId)) {
+      this.#retainManagedWorkspace(sandbox.workspaceId, destroyedAt);
+    }
     return this.#summarize(destroyed);
   }
 
