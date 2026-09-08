@@ -12,6 +12,7 @@ import { WorkspaceService } from '../../src/workspaces/service.js';
 class FakeDriver implements SandboxDriver {
   readonly runtimes = new Map<string, RuntimeInfo>();
   createCalls = 0;
+  createWait: Promise<void> | undefined;
   readonly memoryCalls: Array<number | undefined> = [];
   healthy = true;
   healthError: Error | undefined;
@@ -24,7 +25,7 @@ class FakeDriver implements SandboxDriver {
     return Promise.resolve();
   }
 
-  create(
+  async create(
     name: string,
     _workspace: unknown,
     memoryBytes?: number,
@@ -32,7 +33,8 @@ class FakeDriver implements SandboxDriver {
     this.createCalls += 1;
     this.memoryCalls.push(memoryBytes);
     this.runtimes.set(name, { name, status: 'running' });
-    return Promise.resolve({ endpoint: 'http://127.0.0.1:1234/mcp', runtimeRoot: '/workspace' });
+    await this.createWait;
+    return { endpoint: 'http://127.0.0.1:1234/mcp', runtimeRoot: '/workspace' };
   }
 
   expose(_name: string, sandboxPort: number): Promise<PublishedPort> {
@@ -49,7 +51,9 @@ class FakeDriver implements SandboxDriver {
 
   async remove(name: string): Promise<void> {
     this.removeCalls += 1;
-    await this.removeWait;
+    const wait = this.removeWait;
+    this.removeWait = undefined;
+    await wait;
     if (this.removeError) {
       throw this.removeError;
     }
@@ -276,6 +280,73 @@ test('a failed creation remains pending when runtime cleanup fails', async () =>
   expect(failed?.destroyedAt).toBeUndefined();
   expect(database.countActiveSandboxes()).toBe(1);
   expect(driver.runtimes.size).toBe(1);
+});
+
+test('destroy waits for sandbox creation before removing it', async () => {
+  const { driver, service } = fixture('chat2sbx-create-destroy-');
+  let finishCreation: (() => void) | undefined;
+  driver.createWait = new Promise<void>((resolve) => {
+    finishCreation = resolve;
+  });
+
+  const creation = service.create('owner', {});
+  while (driver.createCalls === 0) {
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+  }
+  const creating = service.list('owner')[0];
+  if (!creating || !finishCreation) {
+    throw new Error('Expected sandbox creation to be pending');
+  }
+  let destroyCompleted = false;
+  const destruction = service.destroy('owner', creating.id).then((result) => {
+    destroyCompleted = true;
+    return result;
+  });
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  expect(destroyCompleted).toBe(false);
+
+  finishCreation();
+  await expect(creation).resolves.toMatchObject({ status: 'created' });
+  await expect(destruction).resolves.toMatchObject({ status: 'destroyed' });
+  expect(service.get('owner', creating.id).status).toBe('destroyed');
+});
+
+test('destroy waits for failed creation cleanup before removing its record', async () => {
+  const { driver, service } = fixture('chat2sbx-create-failure-destroy-');
+  driver.healthError = new Error('health failed');
+  let finishCleanup: (() => void) | undefined;
+  driver.removeWait = new Promise<void>((resolve) => {
+    finishCleanup = resolve;
+  });
+
+  const creation = service.create('owner', {});
+  while (driver.removeCalls === 0) {
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+  }
+  const failed = service.list('owner')[0];
+  if (!failed || !finishCleanup) {
+    throw new Error('Expected failed sandbox cleanup to be pending');
+  }
+  let destroyCompleted = false;
+  const destruction = service.destroy('owner', failed.id).then((result) => {
+    destroyCompleted = true;
+    return result;
+  });
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  expect(destroyCompleted).toBe(false);
+
+  finishCleanup();
+  await expect(creation).rejects.toThrow('health failed');
+  await expect(destruction).resolves.toMatchObject({ status: 'destroyed' });
+  expect(service.get('owner', failed.id).status).toBe('destroyed');
 });
 
 test('an unhealthy sandbox cannot be reused while its runtime is being removed', async () => {

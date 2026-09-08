@@ -121,35 +121,37 @@ export class SandboxService {
       throw this.#sandboxLimitError();
     }
 
-    try {
-      const runtime = await this.#driver.create(sandbox.runtimeName, workspace, memoryBytes);
-      const authToken = randomBytes(32).toString('hex');
-      await this.#driver.startCodexPro(sandbox.runtimeName, runtime.runtimeRoot, authToken);
-      await this.#driver.waitUntilHealthy(runtime.endpoint, authToken);
-      const running: Sandbox = { ...sandbox, ...runtime, authToken, status: 'running' };
-      this.#database.saveSandbox(running);
-      workspace = this.#workspaces.activate(workspace);
-      return { status: 'created', sandbox: this.#summarize(running) };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const failed: Sandbox = { ...sandbox, status: 'failed', error: message };
-      this.#database.saveSandbox(failed);
-      let cleanupError: string | undefined;
+    return this.withLock(sandbox.id, async () => {
       try {
-        await this.#driver.remove(sandbox.runtimeName);
-      } catch (cleanupFailure) {
-        cleanupError =
-          cleanupFailure instanceof Error ? cleanupFailure.message : String(cleanupFailure);
+        const runtime = await this.#driver.create(sandbox.runtimeName, workspace, memoryBytes);
+        const authToken = randomBytes(32).toString('hex');
+        await this.#driver.startCodexPro(sandbox.runtimeName, runtime.runtimeRoot, authToken);
+        await this.#driver.waitUntilHealthy(runtime.endpoint, authToken);
+        const running: Sandbox = { ...sandbox, ...runtime, authToken, status: 'running' };
+        this.#database.saveSandbox(running);
+        workspace = this.#workspaces.activate(workspace);
+        return { status: 'created', sandbox: this.#summarize(running) };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const failed: Sandbox = { ...sandbox, status: 'failed', error: message };
+        this.#database.saveSandbox(failed);
+        let cleanupError: string | undefined;
+        try {
+          await this.#driver.remove(sandbox.runtimeName);
+        } catch (cleanupFailure) {
+          cleanupError =
+            cleanupFailure instanceof Error ? cleanupFailure.message : String(cleanupFailure);
+        }
+        const failedAt = this.#now();
+        this.#database.saveSandbox({
+          ...failed,
+          error: cleanupError ? `${message}; runtime cleanup failed: ${cleanupError}` : message,
+          destroyedAt: cleanupError === undefined ? failedAt : undefined,
+        });
+        this.#retainManagedWorkspace(sandbox.workspaceId, failedAt);
+        throw error;
       }
-      const failedAt = this.#now();
-      this.#database.saveSandbox({
-        ...failed,
-        error: cleanupError ? `${message}; runtime cleanup failed: ${cleanupError}` : message,
-        destroyedAt: cleanupError === undefined ? failedAt : undefined,
-      });
-      this.#retainManagedWorkspace(sandbox.workspaceId, failedAt);
-      throw error;
-    }
+    });
   }
 
   list(ownerId: string): readonly SandboxSummary[] {

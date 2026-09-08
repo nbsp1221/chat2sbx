@@ -90,6 +90,8 @@ Only the local CLI can approve or reject it, after which MCP callers refer to th
 
 Failures remove a partially created runtime and persist a visible `failed` record for diagnosis. A failed creation does not reactivate a retained managed workspace or change its retention deadline. Failed records remain in `sandbox_list` until explicitly destroyed; there is no automatic retry, replacement, hiding, or history cleanup.
 
+After the `creating` record is stored, creation and every other lifecycle operation for that sandbox are serialized. A destroy request received during creation waits for creation or its failure cleanup to finish, then leaves the sandbox `destroyed`.
+
 The same global instructions are read and returned by `sandbox_get` when an existing sandbox is opened. An absent file adds no response field; symbolic links and other non-regular entries are rejected, and any other read failure is reported. Instructions are not cached, copied into the microVM or workspace, returned by other tools, interpreted as commands, or enforced as security policy.
 
 `maxActiveSandboxes` counts records in `creating`, `running`, or `destroying` state, plus failed sandboxes whose runtime cleanup is still pending, across this chat2sbx database. Reuse and destruction are never blocked by the count limit. The default is unlimited. A per-sandbox memory value is passed directly as `sbx create --memory`; omitting it delegates to the Docker Sandboxes default. chat2sbx does not implement cgroup discovery, memory admission, resource reservation, or automatic resizing.
