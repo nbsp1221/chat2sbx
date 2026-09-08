@@ -14,9 +14,9 @@ const blockedNames = new Set([
   '.ssh',
 ]);
 
-function isInside(candidate: string, root: string): boolean {
+function isWithin(candidate: string, root: string): boolean {
   const relative = path.relative(root, candidate);
-  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 export class HostPathPolicy {
@@ -43,9 +43,9 @@ export class HostPathPolicy {
     if (!stat.isDirectory()) {
       throw new Error('Workspace path must be a directory');
     }
-    if (!this.#allowedRoots.some((root) => isInside(resolved, root))) {
+    if (!this.#allowedRoots.some((root) => isWithin(resolved, root))) {
       throw new Error(
-        `Workspace must be below an allowed host root: ${this.#allowedRoots.join(', ')}`,
+        `Workspace must be an allowed host root or below one: ${this.#allowedRoots.join(', ')}`,
       );
     }
     const names = resolved.split(path.sep);

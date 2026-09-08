@@ -72,7 +72,7 @@ It requires local registration or approval and should be used only when immediat
 
 The MCP API can request a host path but cannot approve it.
 Host access is disabled by default. `CHAT2SBX_ALLOWED_HOST_ROOTS` must explicitly configure one or more roots before chat2sbx inspects a requested host path.
-The path is canonicalized with `realpath`, must be a directory strictly below an allowed root, and is rejected when it contains protected credential-directory components. Previously registered host workspaces are revalidated against the current roots whenever they are selected, so removing a root disables those registrations without deleting them.
+The path is canonicalized with `realpath`, must be an allowed root itself or a directory below one, and is rejected when it contains protected credential-directory components. Previously registered host workspaces are revalidated against the current roots whenever they are selected, so removing a root disables those registrations without deleting them.
 A successful request creates an `approval_required` response with a stable approval ID.
 Only the local CLI can approve or reject it, after which MCP callers refer to the resulting `workspace_id` instead of resubmitting a raw path.
 

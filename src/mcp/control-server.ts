@@ -54,7 +54,7 @@ const sandboxListTool: Tool = {
   name: 'sandbox_list',
   title: 'List Sandboxes',
   description:
-    'List running and failed sandboxes owned by the current chat2sbx principal. Running IDs can be reused from other conversations; failed sandboxes must be destroyed.',
+    'List all non-destroyed sandboxes owned by the current chat2sbx principal, including creating, running, destroying, and failed records. Running IDs can be reused from other conversations; failed sandboxes must be destroyed.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };
@@ -117,7 +117,8 @@ const sandboxExposeTool: Tool = {
 const workspaceListTool: Tool = {
   name: 'workspace_list',
   title: 'List Workspaces',
-  description: 'List managed and locally approved workspaces available to the current principal.',
+  description:
+    'List all known managed and locally approved workspaces for the current principal, including retained and trashed records.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };

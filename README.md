@@ -24,6 +24,8 @@
 
 Each sandbox gets its own shell, approved workspace, CodexPro process, and private Docker Engine. The host shell and host Docker daemon stay outside the execution boundary.
 
+CodexPro is the in-sandbox MCP adapter chat2sbx uses for file, repository, and shell tools. `chat2sbx setup` installs the pinned CodexPro version into the local sandbox template, so no separate CodexPro installation is required on the host.
+
 ### Why use it?
 
 - **Capable by default** — run shell commands, install packages, start servers, and use Docker inside the sandbox.
@@ -57,8 +59,17 @@ The diagram is intentionally simplified. See [Architecture](./docs/architecture.
 ## Prerequisites
 
 - **Node.js 24+**
-- **Docker Sandboxes** (`sbx`)
+- **[Docker Sandboxes](https://docs.docker.com/ai/sandboxes/install/)** (`sbx`), signed in with `sbx login`
 - For ChatGPT access: **OpenAI Secure MCP Tunnel** access and the tunnel client configured for your account
+
+Docker Sandboxes requires a global network-policy preset before it can create sandboxes. On an interactive machine Docker prompts for one on first use. On a headless/non-interactive host, initialize it explicitly before running chat2sbx; Docker recommends `balanced` for most development workflows:
+
+```bash
+sbx login
+sbx policy init balanced
+```
+
+Choose a different Docker Sandboxes policy if your environment requires it; chat2sbx does not override Docker's network policy.
 
 ## Quick start
 
@@ -143,7 +154,10 @@ bash_poll
 | `clone`   | Private clone of an approved host repository     | Safe default for existing repositories              |
 | `direct`  | Read/write access to one approved host directory | Work that must immediately affect the host checkout |
 
-Host workspaces are disabled by default. Set `CHAT2SBX_ALLOWED_HOST_ROOTS` to opt in, then approve or register paths below those roots. Existing registrations are usable only while their paths remain below the currently configured roots. `clone` is the default for approved host repositories. Use `direct` only when you intentionally want sandbox commands to modify the approved host directory.
+Host workspaces are disabled by default. Set `CHAT2SBX_ALLOWED_HOST_ROOTS` to opt in, then approve or register a configured root itself or paths below it. Existing registrations are usable only while their paths remain within the currently configured roots. `clone` is the default for approved host repositories. Use `direct` only when you intentionally want sandbox commands to modify the approved host directory.
+
+> [!IMPORTANT]
+> `clone` protects the host checkout from sandbox writes, but it is not a confidentiality boundary: Docker Sandboxes can expose ignored or untracked files that live inside the approved repository. Keep credentials outside approved roots. The private clone also belongs to the sandbox, so unexported changes disappear when that sandbox is removed; transfer useful work back to the host or remote repository before destruction or expiration.
 
 ## Resource controls and global instructions
 

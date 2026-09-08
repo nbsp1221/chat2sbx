@@ -49,6 +49,16 @@ test('a host path becomes only a pending approval until approved locally', () =>
   expect(workspace.root).toBe(repository);
 });
 
+test('an allowed host root can itself be registered as a workspace', () => {
+  const { base, service } = fixture();
+  const allowedRoot = path.join(base, 'allowed');
+
+  const workspace = service.registerHost('owner', allowedRoot, 'direct');
+
+  expect(workspace.root).toBe(allowedRoot);
+  expect(workspace.mode).toBe('direct');
+});
+
 test('paths outside allow roots and protected paths are rejected', () => {
   const { base, service } = fixture();
   const outside = path.join(base, 'outside');
