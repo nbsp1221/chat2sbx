@@ -243,9 +243,12 @@ export class StateDatabase {
 
   listActiveSandboxes(): readonly Sandbox[] {
     return this.#database
-      .prepare(
-        "SELECT * FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL) ORDER BY created_at DESC",
-      )
+      .prepare(`SELECT sandboxes.* FROM sandboxes
+        JOIN workspaces ON workspaces.id = sandboxes.workspace_id
+        WHERE ${MANAGED_WORKSPACE}
+        AND (sandboxes.status IN ('creating', 'running', 'destroying')
+          OR (sandboxes.status = 'failed' AND sandboxes.destroyed_at IS NULL))
+        ORDER BY sandboxes.created_at DESC`)
       .all()
       .map(sandboxFromRow);
   }

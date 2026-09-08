@@ -99,7 +99,7 @@ In another terminal:
 chat2sbx status
 ```
 
-The MCP endpoint binds to loopback at `http://127.0.0.1:18788/mcp` by default. chat2sbx does not expose or authenticate this endpoint for you.
+The MCP endpoint binds to loopback at `http://127.0.0.1:18788/mcp` by default. `chat2sbx serve` intentionally stays in the foreground and exits on Ctrl+C or SIGTERM. For always-on use, supervise it with the operating system's service manager rather than relying on chat2sbx to daemonize itself. chat2sbx does not expose or authenticate the MCP endpoint for you.
 
 ### 4. Connect ChatGPT
 

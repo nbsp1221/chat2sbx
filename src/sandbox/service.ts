@@ -256,44 +256,43 @@ export class SandboxService {
     const runtimes = new Map((await this.#driver.list()).map((runtime) => [runtime.name, runtime]));
     for (const sandbox of this.#database.listActiveSandboxes()) {
       const runtime = runtimes.get(sandbox.runtimeName);
-      if (sandbox.status === 'destroying') {
+      try {
         if (runtime) {
           await this.#driver.remove(sandbox.runtimeName);
         }
-        const destroyedAt = this.#now();
-        this.#database.saveSandbox({
-          ...sandbox,
-          status: 'destroyed',
-          endpoint: undefined,
-          authToken: undefined,
-          destroyedAt,
-        });
-        this.#retainWorkspace(sandbox.workspaceId, destroyedAt);
-      } else if (sandbox.status === 'failed') {
-        if (runtime) {
-          await this.#driver.remove(sandbox.runtimeName);
-        }
-        this.#database.saveSandbox({
-          ...sandbox,
-          endpoint: undefined,
-          authToken: undefined,
-          destroyedAt: this.#now(),
-        });
-      } else {
-        if (runtime) {
-          await this.#driver.remove(sandbox.runtimeName);
-        }
-        const destroyedAt = this.#now();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         this.#database.saveSandbox({
           ...sandbox,
           status: 'failed',
-          error: 'chat2sbx restarted; destroy this sandbox and create a new one',
-          destroyedAt,
+          error: `runtime cleanup failed during controller reconciliation: ${message}`,
           endpoint: undefined,
           authToken: undefined,
+          destroyedAt: undefined,
         });
-        this.#retainWorkspace(sandbox.workspaceId, destroyedAt);
+        continue;
       }
+
+      const cleanedAt = this.#now();
+      if (sandbox.status === 'failed') {
+        this.#database.saveSandbox({
+          ...sandbox,
+          endpoint: undefined,
+          authToken: undefined,
+          destroyedAt: sandbox.destroyedAt ?? cleanedAt,
+        });
+        continue;
+      }
+
+      this.#database.saveSandbox({
+        ...sandbox,
+        status: 'destroyed',
+        error: undefined,
+        endpoint: undefined,
+        authToken: undefined,
+        destroyedAt: cleanedAt,
+      });
+      this.#retainWorkspace(sandbox.workspaceId, cleanedAt);
     }
   }
 

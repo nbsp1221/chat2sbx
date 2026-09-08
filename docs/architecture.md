@@ -29,7 +29,7 @@ The `SbxDriver` is the only component allowed to invoke `sbx`, and it accepts st
 
 ## Runtime ownership
 
-The npm package exposes one `chat2sbx` executable. `chat2sbx serve` is the only server entry point and stays in the foreground. It validates local dependencies, reconciles persisted sandbox state, opens the loopback MCP gateway, and closes it on SIGINT or SIGTERM. chat2sbx does not start or supervise any external tunnel process.
+The npm package exposes one `chat2sbx` executable. `chat2sbx serve` is the only server entry point and stays in the foreground. It validates local dependencies, reconciles persisted sandbox state, opens the loopback MCP gateway, and closes it on SIGINT or SIGTERM. Long-running deployments should use an external operating-system process manager; chat2sbx does not daemonize itself or supervise any external tunnel process.
 
 The writable SQLite connection checks the application-owned `user_version` and applies all pending forward migrations in one transaction before exposing the database to application logic. Fresh and existing databases follow the same ordered migration list. Reopening an up-to-date database is a no-op, while a database created by a newer unsupported chat2sbx version fails before any application work. There is no manual migration command, down migration, or schema-dependent branch in business logic.
 
@@ -104,7 +104,7 @@ Every tool call that reaches a running sandbox renews its idle deadline, whether
 An expired workspace is not moved while it has a sandbox in `creating`, `running`, `destroying`, or `failed` state. The trash directory is not emptied automatically.
 
 At controller startup, persisted active records are reconciled with `sbx ls`.
-Any microVM left by the previous controller is removed and its sandbox record becomes `failed` because the foreground CodexPro session belonged to that controller.
-An unhealthy CodexPro runtime is removed immediately and its sandbox record also becomes `failed`. If runtime removal fails, the failure is recorded and explicit destruction retries it.
+A microVM left by a previous controller is not resumed because its foreground CodexPro session belonged to that controller. If runtime cleanup succeeds, the sandbox is recorded as `destroyed`, its managed workspace is retained, and that workspace can be used immediately for a replacement sandbox.
+If runtime cleanup fails during reconciliation, that sandbox is recorded as `failed` with the cleanup error while reconciliation continues for other sandboxes. An unhealthy CodexPro runtime also becomes `failed`; explicit destruction retries cleanup.
 The user must destroy a failed sandbox before creating a replacement for the same workspace; failures in other workspaces do not block creation. chat2sbx does not restart CodexPro or recover the old runtime automatically.
 Reconciliation completes before the MCP gateway begins listening and has no chat2sbx-imposed time limit.

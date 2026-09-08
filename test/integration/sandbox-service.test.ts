@@ -520,7 +520,7 @@ test('idle cleanup rechecks activity after an in-flight call', async () => {
   expect(service.get('owner', created.id).status).toBe('running');
 });
 
-test('a controller restart invalidates runtimes that the new controller does not own', async () => {
+test('a controller restart retires the previous runtime and allows immediate workspace reuse', async () => {
   const { appConfig, database, driver, service, workspaces } = fixture('chat2sbx-reconcile-');
   const created = sandboxFrom(await service.create('owner', {}));
   expect(created.status).toBe('running');
@@ -534,6 +534,45 @@ test('a controller restart invalidates runtimes that the new controller does not
   await restartedController.reconcile();
 
   expect(driver.removeCalls).toBe(1);
-  expect(restartedController.list('owner')[0]?.status).toBe('failed');
-  expect(restartedController.list('owner')[0]?.error ?? '').toMatch(/chat2sbx restarted/);
+  expect(restartedController.get('owner', created.id).status).toBe('destroyed');
+  expect(restartedController.list('owner')).toEqual([]);
+  expect(workspaces.getAvailable('owner', created.workspace.id).status).toBe('retained');
+
+  const replacement = sandboxFrom(
+    await restartedController.create('owner', { workspaceId: created.workspace.id }),
+  );
+  expect(replacement.status).toBe('running');
+  expect(replacement.workspace.status).toBe('active');
+});
+
+test('controller reconciliation records cleanup failures without blocking service startup', async () => {
+  const { appConfig, database, driver, service, workspaces } = fixture(
+    'chat2sbx-reconcile-failure-',
+  );
+  const created = sandboxFrom(await service.create('owner', {}));
+  driver.removeError = new Error('sbx rm failed');
+
+  const restartedController = new SandboxService({
+    config: appConfig,
+    database,
+    driver,
+    workspaces,
+  });
+  await expect(restartedController.reconcile()).resolves.toBeUndefined();
+
+  expect(restartedController.get('owner', created.id)).toMatchObject({
+    status: 'failed',
+    destroyedAt: undefined,
+  });
+  expect(restartedController.get('owner', created.id).error ?? '').toMatch(/sbx rm failed/);
+  expect(workspaces.getAvailable('owner', created.workspace.id).status).toBe('active');
+  await expect(
+    restartedController.create('owner', { workspaceId: created.workspace.id }),
+  ).rejects.toThrow(/sandbox in failed state/);
+
+  driver.removeError = undefined;
+  await restartedController.destroy('owner', created.id);
+  await expect(
+    restartedController.create('owner', { workspaceId: created.workspace.id }),
+  ).resolves.toMatchObject({ status: 'created' });
 });

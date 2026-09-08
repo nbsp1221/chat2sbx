@@ -97,6 +97,7 @@ test('keeps legacy host capability rows inert while preserving them in the datab
   expect(database.getSandbox('sbx_legacy_host', 'owner')).toBeUndefined();
   expect(database.listWorkspaces('owner')).toEqual([]);
   expect(database.listCurrentSandboxes('owner')).toEqual([]);
+  expect(database.listActiveSandboxes()).toEqual([]);
   expect(database.countActiveSandboxes()).toBe(0);
   database.close();
 
