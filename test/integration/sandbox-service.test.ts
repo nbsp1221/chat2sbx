@@ -274,13 +274,37 @@ test('an unhealthy sandbox cannot be reused while its runtime is being removed',
 
   await expect(limited.create('owner', {})).rejects.toThrow(/Active sandbox limit reached/);
   await expect(limited.create('owner', { workspaceId: created.workspace.id })).rejects.toThrow(
-    /sandbox in destroying state/,
+    /sandbox in failed state/,
   );
   if (!finishRemoval) {
     throw new Error('Expected runtime removal to be waiting');
   }
   finishRemoval();
   await expect(healthCheck).rejects.toThrow(/destroy this sandbox and create a new one/);
+});
+
+test('restart preserves a failed sandbox while its unhealthy runtime cleanup is pending', async () => {
+  const { appConfig, database, driver, service, workspaces } = fixture(
+    'chat2sbx-unhealthy-restart-',
+  );
+  const created = sandboxFrom(await service.create('owner', {}));
+  database.saveSandbox({
+    ...database.getSandbox(created.id, 'owner')!,
+    status: 'failed',
+    endpoint: undefined,
+    authToken: undefined,
+    error: 'CodexPro is unavailable; destroy this sandbox and create a new one',
+  });
+
+  const restarted = new SandboxService({ config: appConfig, database, driver, workspaces });
+  await restarted.reconcile();
+
+  const reconciled = restarted.get('owner', created.id);
+  expect(reconciled).toMatchObject({
+    status: 'failed',
+    error: 'CodexPro is unavailable; destroy this sandbox and create a new one',
+  });
+  expect(typeof reconciled.destroyedAt).toBe('number');
 });
 
 test('a failed sandbox blocks only its workspace until explicit destruction', async () => {

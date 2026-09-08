@@ -214,7 +214,7 @@ export class StateDatabase {
       if (maxActiveSandboxes !== undefined) {
         const row = this.#database
           .prepare(
-            "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying')",
+            "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL)",
           )
           .get();
         if (Number(row?.count ?? 0) >= maxActiveSandboxes) {
@@ -291,7 +291,7 @@ export class StateDatabase {
   listActiveSandboxes(): readonly Sandbox[] {
     return this.#database
       .prepare(
-        "SELECT * FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') ORDER BY created_at DESC",
+        "SELECT * FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL) ORDER BY created_at DESC",
       )
       .all()
       .map(sandboxFromRow);
@@ -300,7 +300,7 @@ export class StateDatabase {
   countActiveSandboxes(): number {
     const row = this.#database
       .prepare(
-        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying')",
+        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL)",
       )
       .get();
     return Number(row?.count ?? 0);

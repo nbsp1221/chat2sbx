@@ -188,23 +188,25 @@ export class SandboxService {
       }
       if (!(await this.#driver.isHealthy(sandbox.endpoint, sandbox.authToken))) {
         const message = 'CodexPro is unavailable; destroy this sandbox and create a new one';
-        const removing: Sandbox = {
+        const failed: Sandbox = {
           ...sandbox,
-          status: 'destroying',
+          status: 'failed',
           endpoint: undefined,
           authToken: undefined,
           error: message,
         };
-        this.#database.saveSandbox(removing);
+        this.#database.saveSandbox(failed);
         let error = message;
+        let destroyedAt: number | undefined;
         try {
           await this.#driver.remove(sandbox.runtimeName);
+          destroyedAt = this.#now();
         } catch (cleanupError) {
           const cleanupMessage =
             cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
           error = `${message}; runtime cleanup failed: ${cleanupMessage}`;
         }
-        this.#database.saveSandbox({ ...removing, status: 'failed', error });
+        this.#database.saveSandbox({ ...failed, error, destroyedAt });
         throw new Error(`${error}: ${sandboxId}`);
       }
       try {
@@ -266,6 +268,16 @@ export class SandboxService {
           destroyedAt,
         });
         this.#retainManagedWorkspace(sandbox.workspaceId, destroyedAt);
+      } else if (sandbox.status === 'failed') {
+        if (runtime) {
+          await this.#driver.remove(sandbox.runtimeName);
+        }
+        this.#database.saveSandbox({
+          ...sandbox,
+          endpoint: undefined,
+          authToken: undefined,
+          destroyedAt: this.#now(),
+        });
       } else {
         if (runtime) {
           await this.#driver.remove(sandbox.runtimeName);
