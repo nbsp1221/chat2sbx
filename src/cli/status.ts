@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import type { RuntimeConfig } from '../config.js';
+import { gatewayUrl } from '../runtime/gateway-url.js';
 
 async function isReady(url: string): Promise<boolean> {
   try {
@@ -34,22 +35,12 @@ export async function status(config: RuntimeConfig): Promise<boolean> {
     return false;
   }
 
-  const mcpReady = await isReady(`http://${config.host}:${config.port}/healthz`);
-  let tunnelState = 'disabled';
-  if (config.tunnelEnabled) {
-    try {
-      const healthUrl = (await readFile(config.tunnelHealthUrlPath, 'utf8')).trim();
-      tunnelState = (await isReady(`${healthUrl}/readyz`)) ? 'ready' : 'not ready';
-    } catch {
-      tunnelState = 'not ready';
-    }
-  }
+  const mcpReady = await isReady(gatewayUrl(config, '/healthz'));
 
   console.log(`Service  running (PID ${pid})`);
   console.log(`MCP      ${mcpReady ? `ready at ${config.host}:${config.port}` : 'not ready'}`);
-  console.log(`Tunnel   ${tunnelState}`);
   console.log(`Sandboxes ${activeSandboxes} active / ${sandboxLimit} max`);
-  return mcpReady && tunnelState !== 'not ready';
+  return mcpReady;
 }
 
 function countActiveSandboxes(databasePath: string): number {
@@ -59,9 +50,11 @@ function countActiveSandboxes(databasePath: string): number {
   const database = new DatabaseSync(databasePath, { readOnly: true });
   try {
     const row = database
-      .prepare(
-        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') OR (status = 'failed' AND destroyed_at IS NULL)",
-      )
+      .prepare(`SELECT COUNT(*) AS count FROM sandboxes
+        JOIN workspaces ON workspaces.id = sandboxes.workspace_id
+        WHERE workspaces.kind = 'managed' AND workspaces.mode = 'managed'
+        AND (sandboxes.status IN ('creating', 'running', 'destroying')
+          OR (sandboxes.status = 'failed' AND sandboxes.destroyed_at IS NULL))`)
       .get();
     return Number(row?.count ?? 0);
   } finally {

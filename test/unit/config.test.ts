@@ -13,16 +13,7 @@ test('uses the complete public lifecycle policy', () => {
   expect('sandboxCpus' in config).toBe(false);
   expect('sandboxMemory' in config).toBe(false);
   expect(config.maxActiveSandboxes).toBeUndefined();
-  expect(config.allowedHostRoots).toEqual([]);
-});
-
-test('enables host workspaces only for explicitly configured roots', () => {
-  const config = loadAppConfig({
-    CHAT2SBX_ALLOWED_HOST_ROOTS: ['/tmp/projects', '/srv/work'].join(path.delimiter),
-    HOME: '/tmp/chat2sbx-config-test',
-  });
-
-  expect(config.allowedHostRoots).toEqual(['/tmp/projects', '/srv/work']);
+  expect('allowedHostRoots' in config).toBe(false);
 });
 
 test('loads the sandbox count limit from config.json with an environment override', () => {
@@ -65,7 +56,7 @@ test('uses the documented runtime locations without enabling extra service polic
   });
 
   expect(config.runtimePidPath).toBe('/tmp/chat2sbx-config-test/.chat2sbx/state/runtime.pid');
-  expect(config.tunnelHealthUrlPath).toBe('/tmp/chat2sbx-config-test/.chat2sbx/state/health.url');
-  expect(config.tunnelEnabled).toBe(true);
+  expect('tunnelEnabled' in config).toBe(false);
+  expect('tunnelClient' in config).toBe(false);
   expect('restart' in config).toBe(false);
 });

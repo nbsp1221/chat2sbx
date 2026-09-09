@@ -18,7 +18,6 @@ async function listen(server: http.Server): Promise<number> {
 
 function config(): AppConfig {
   return {
-    allowedHostRoots: ['/tmp'],
     dataRoot: '/tmp/chat2sbx',
     databasePath: ':memory:',
     host: '127.0.0.1',
@@ -69,7 +68,9 @@ async function rpc(
 
 test('serves management tools itself instead of proxying to a host CodexPro', async () => {
   let listCalls = 0;
-  let exposedPort: number | undefined;
+  let exposedHost: string | undefined;
+  let exposedHostPort: number | undefined;
+  let exposedSandboxPort: number | undefined;
   let requestedMemory: string | undefined;
   let sandboxInstructions: string | undefined = '# Global sandbox instructions\n';
   const gateway = createGateway(config(), {
@@ -88,19 +89,6 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
       sandboxes: {
         create(_ownerId, request) {
           requestedMemory = request.memory;
-          if (request.workspacePath) {
-            return Promise.resolve({
-              status: 'approval_required' as const,
-              approval: {
-                createdAt: 1,
-                id: 'approval_test',
-                mode: 'clone' as const,
-                ownerId: 'local-owner',
-                requestedPath: request.workspacePath,
-                status: 'pending' as const,
-              },
-            });
-          }
           return Promise.resolve({
             status: 'created' as const,
             sandbox: {
@@ -113,11 +101,9 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
               workspace: {
                 createdAt: 1,
                 id: 'ws_test',
-                kind: 'managed' as const,
-                mode: 'managed' as const,
                 ownerId: 'local-owner',
                 root: '/tmp/chat2sbx/workspaces/ws_test',
-                status: 'approved' as const,
+                status: 'active' as const,
               },
             },
           });
@@ -125,9 +111,16 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
         destroy() {
           return Promise.reject(new Error('not used'));
         },
-        expose(_ownerId, sandboxId, port) {
-          exposedPort = port;
-          return Promise.resolve({ hostPort: 32_000, sandboxId, sandboxPort: port });
+        expose(_ownerId, sandboxId, sandboxPort, host, hostPort) {
+          exposedHost = host ?? '127.0.0.1';
+          exposedHostPort = hostPort;
+          exposedSandboxPort = sandboxPort;
+          return Promise.resolve({
+            host: exposedHost,
+            hostPort: hostPort ?? 32_000,
+            sandboxId,
+            sandboxPort,
+          });
         },
         get() {
           return {
@@ -140,11 +133,9 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
             workspace: {
               createdAt: 1,
               id: 'ws_test',
-              kind: 'managed' as const,
-              mode: 'managed' as const,
               ownerId: 'local-owner',
               root: '/tmp/chat2sbx/workspaces/ws_test',
-              status: 'approved' as const,
+              status: 'active' as const,
             },
           };
         },
@@ -178,7 +169,11 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
     protocolVersion: '2025-06-18',
   });
   const listed = await rpc(url, 2, 'tools/list');
-  const tools = (listed.result as { tools: Array<{ name: string }> }).tools;
+  const tools = (
+    listed.result as {
+      tools: Array<{ inputSchema: { properties?: Record<string, unknown> }; name: string }>;
+    }
+  ).tools;
   expect(tools.map((tool) => tool.name)).toEqual([
     'sandbox_create',
     'sandbox_list',
@@ -187,6 +182,9 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
     'sandbox_destroy',
     'workspace_list',
   ]);
+  expect(
+    Object.keys(tools.find((tool) => tool.name === 'sandbox_create')?.inputSchema.properties ?? {}),
+  ).toEqual(['workspace_id', 'memory']);
 
   const called = await rpc(url, 3, 'tools/call', { arguments: {}, name: 'sandbox_list' });
   expect(
@@ -195,15 +193,23 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
   expect(listCalls).toBe(1);
 
   const exposed = await rpc(url, 4, 'tools/call', {
-    arguments: { port: 3_000, sandbox_id: 'sbx_test' },
+    arguments: {
+      host: '0.0.0.0',
+      host_port: 8_080,
+      sandbox_id: 'sbx_test',
+      sandbox_port: 3_000,
+    },
     name: 'sandbox_expose',
   });
   expect((exposed.result as { structuredContent: unknown }).structuredContent).toEqual({
-    hostPort: 32_000,
+    host: '0.0.0.0',
+    hostPort: 8_080,
     sandboxId: 'sbx_test',
     sandboxPort: 3_000,
   });
-  expect(exposedPort).toBe(3_000);
+  expect(exposedHost).toBe('0.0.0.0');
+  expect(exposedHostPort).toBe(8_080);
+  expect(exposedSandboxPort).toBe(3_000);
 
   const created = await rpc(url, 5, 'tools/call', {
     arguments: { memory: '4g' },
@@ -243,15 +249,6 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
   expect(
     (openedWithoutInstructions.result as { structuredContent: Record<string, unknown> })
       .structuredContent,
-  ).not.toHaveProperty('sandbox_instructions');
-
-  sandboxInstructions = '# Must not accompany approval\n';
-  const approvalRequired = await rpc(url, 9, 'tools/call', {
-    arguments: { workspace_path: '/tmp/repository' },
-    name: 'sandbox_create',
-  });
-  expect(
-    (approvalRequired.result as { structuredContent: Record<string, unknown> }).structuredContent,
   ).not.toHaveProperty('sandbox_instructions');
 });
 

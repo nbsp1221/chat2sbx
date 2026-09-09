@@ -3,9 +3,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, test, vi } from 'vitest';
 import { status } from '../../src/cli/status.js';
 import { loadRuntimeConfig } from '../../src/config.js';
+import { StateDatabase } from '../../src/state/database.js';
 
 const roots: string[] = [];
 
@@ -23,7 +25,6 @@ test('reports a stopped service when no live PID exists', async () => {
   const ready = await status(
     loadRuntimeConfig({
       CHAT2SBX_DATA_ROOT: path.join(root, '.chat2sbx'),
-      CHAT2SBX_ENABLE_TUNNEL: '0',
       CHAT2SBX_MAX_ACTIVE_SANDBOXES: '2',
     }),
   );
@@ -32,13 +33,36 @@ test('reports a stopped service when no live PID exists', async () => {
   expect(output).toEqual(['Service  stopped', 'Sandboxes 0 active / 2 max']);
 });
 
-test('checks the running process and MCP health', async () => {
+test('ignores legacy host sandboxes in the active count', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'chat2sbx-status-'));
+  roots.push(root);
+  const config = loadRuntimeConfig({ CHAT2SBX_DATA_ROOT: path.join(root, '.chat2sbx') });
+  new StateDatabase(config.databasePath).close();
+
+  const database = new DatabaseSync(config.databasePath);
+  database.exec(`
+    INSERT INTO workspaces
+      (id, owner_id, kind, mode, root, status, created_at, retained_until)
+    VALUES ('ws_legacy', 'owner', 'host', 'direct', '/tmp/legacy', 'approved', 1, NULL);
+    INSERT INTO sandboxes
+      (id, owner_id, workspace_id, runtime_name, status, created_at, last_activity_at, expires_at)
+    VALUES ('sbx_legacy', 'owner', 'ws_legacy', 'c2s-legacy', 'running', 1, 1, 999999);
+  `);
+  database.close();
+
+  const output: string[] = [];
+  vi.spyOn(console, 'log').mockImplementation((message) => output.push(String(message)));
+  expect(await status(config)).toBe(false);
+  expect(output).toContain('Sandboxes 0 active / unlimited max');
+});
+
+test.each(['127.0.0.1', '::1'])('checks the running process and MCP health on %s', async (host) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'chat2sbx-status-'));
   roots.push(root);
   const server = http.createServer((_request, response) => {
     response.writeHead(200).end('{"status":"ok"}');
   });
-  server.listen(0, '127.0.0.1');
+  server.listen(0, host);
   await once(server, 'listening');
   const address = server.address();
   if (!address || typeof address === 'string') {
@@ -47,8 +71,8 @@ test('checks the running process and MCP health', async () => {
 
   const config = loadRuntimeConfig({
     CHAT2SBX_DATA_ROOT: path.join(root, '.chat2sbx'),
-    CHAT2SBX_ENABLE_TUNNEL: '0',
     CHAT2SBX_PORT: String(address.port),
+    CHAT2SBX_HOST: host,
   });
   await mkdir(config.stateDir, { recursive: true });
   await writeFile(config.runtimePidPath, `${process.pid}\n`);
@@ -59,8 +83,7 @@ test('checks the running process and MCP health', async () => {
     expect(await status(config)).toBe(true);
     expect(output).toEqual([
       `Service  running (PID ${process.pid})`,
-      `MCP      ready at 127.0.0.1:${address.port}`,
-      'Tunnel   disabled',
+      `MCP      ready at ${host}:${address.port}`,
       'Sandboxes 0 active / unlimited max',
     ]);
   } finally {

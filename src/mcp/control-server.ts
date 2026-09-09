@@ -15,23 +15,13 @@ const sandboxCreateTool: Tool = {
   name: 'sandbox_create',
   title: 'Create or Reuse Sandbox',
   description:
-    'Create an isolated Docker Sandbox, reuse the active sandbox for a workspace, or request host approval for a new host path. A created or reused sandbox includes the current global sandbox instructions when AGENTS.md exists in the chat2sbx data directory.',
+    'Create an isolated Docker Sandbox with a new managed workspace, or reuse the active sandbox for an existing managed workspace. A created or reused sandbox includes the current global sandbox instructions when AGENTS.md exists in the chat2sbx data directory.',
   inputSchema: {
     type: 'object',
     properties: {
       workspace_id: {
         type: 'string',
-        description:
-          'Approved persistent workspace id. Omit with workspace_path to create a managed workspace.',
-      },
-      workspace_path: {
-        type: 'string',
-        description: 'Host path to request. It is never mounted until approved locally.',
-      },
-      workspace_mode: {
-        type: 'string',
-        enum: ['managed', 'clone', 'direct'],
-        description: 'Defaults to managed without a path and clone with a host path.',
+        description: 'Existing managed workspace id. Omit to create a new managed workspace.',
       },
       memory: {
         type: 'string',
@@ -54,7 +44,7 @@ const sandboxListTool: Tool = {
   name: 'sandbox_list',
   title: 'List Sandboxes',
   description:
-    'List running and failed sandboxes owned by the current chat2sbx principal. Running IDs can be reused from other conversations; failed sandboxes must be destroyed.',
+    'List all non-destroyed sandboxes owned by the current chat2sbx principal, including creating, running, destroying, and failed records. Running IDs can be reused from other conversations; failed sandboxes must be destroyed.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };
@@ -77,7 +67,7 @@ const sandboxDestroyTool: Tool = {
   name: 'sandbox_destroy',
   title: 'Destroy Sandbox',
   description:
-    'Permanently remove one sandbox microVM. Managed workspace files are retained for 30 days; registered host workspaces are never deleted.',
+    'Permanently remove one sandbox microVM. Its managed workspace files are retained for 30 days.',
   inputSchema: {
     type: 'object',
     properties: { sandbox_id: { type: 'string' } },
@@ -96,14 +86,31 @@ const sandboxExposeTool: Tool = {
   name: 'sandbox_expose',
   title: 'Expose Sandbox Port',
   description:
-    'Publish one TCP port from a running sandbox on an automatically assigned port on every host IPv4 interface. The service inside the sandbox must listen on 0.0.0.0. The mapping has no separate authentication or expiration and disappears with the sandbox. Traffic through it does not renew sandbox activity.',
+    'Publish one TCP/IPv4 port mapping from a running sandbox. sandbox_port is the port inside the sandbox. host is the host IPv4 bind address and defaults to 127.0.0.1. host_port is the host-side port and is allocated automatically when omitted. The service inside the sandbox must listen on 0.0.0.0. The mapping has no separate authentication or expiration and disappears with the sandbox. Traffic through it does not renew sandbox activity.',
   inputSchema: {
     type: 'object',
     properties: {
       sandbox_id: { type: 'string' },
-      port: { type: 'integer', minimum: 1, maximum: 65_535 },
+      sandbox_port: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 65_535,
+        description: 'TCP port inside the sandbox.',
+      },
+      host: {
+        type: 'string',
+        default: '127.0.0.1',
+        description: 'Host IPv4 bind address. Use 0.0.0.0 to listen on every host IPv4 interface.',
+      },
+      host_port: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 65_535,
+        description:
+          'Optional host-side TCP port. Omit to allocate an available port automatically.',
+      },
     },
-    required: ['sandbox_id', 'port'],
+    required: ['sandbox_id', 'sandbox_port'],
     additionalProperties: false,
   },
   annotations: {
@@ -117,7 +124,8 @@ const sandboxExposeTool: Tool = {
 const workspaceListTool: Tool = {
   name: 'workspace_list',
   title: 'List Workspaces',
-  description: 'List managed and locally approved workspaces available to the current principal.',
+  description:
+    'List all known managed workspaces for the current principal, including active, retained, and archived records.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };
@@ -154,6 +162,17 @@ function optionalString(args: Record<string, unknown>, name: string): string | u
 
 function requiredNumber(args: Record<string, unknown>, name: string): number {
   const value = args[name];
+  if (typeof value !== 'number') {
+    throw new Error(`${name} must be a number`);
+  }
+  return value;
+}
+
+function optionalNumber(args: Record<string, unknown>, name: string): number | undefined {
+  const value = args[name];
+  if (value === undefined) {
+    return undefined;
+  }
   if (typeof value !== 'number') {
     throw new Error(`${name} must be a number`);
   }
@@ -209,21 +228,12 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
       const args = objectArgs(request.params.arguments);
       switch (request.params.name) {
         case 'sandbox_create': {
-          const modeValue = optionalString(args, 'workspace_mode');
-          const mode = modeValue as 'managed' | 'clone' | 'direct' | undefined;
-          if (mode && mode !== 'managed' && mode !== 'clone' && mode !== 'direct') {
-            throw new Error('workspace_mode must be managed, clone, or direct');
-          }
           const instructions = await dependencies.readSandboxInstructions();
           const result = await dependencies.sandboxes.create(dependencies.principalId, {
             workspaceId: optionalString(args, 'workspace_id'),
-            workspacePath: optionalString(args, 'workspace_path'),
-            workspaceMode: mode,
             memory: optionalString(args, 'memory'),
           });
-          return jsonResult(
-            result.sandbox ? withSandboxInstructions(result, instructions) : result,
-          );
+          return jsonResult(withSandboxInstructions(result, instructions));
         }
         case 'sandbox_list':
           return jsonResult({ sandboxes: dependencies.sandboxes.list(dependencies.principalId) });
@@ -241,7 +251,9 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
             await dependencies.sandboxes.expose(
               dependencies.principalId,
               optionalString(args, 'sandbox_id') ?? '',
-              requiredNumber(args, 'port'),
+              requiredNumber(args, 'sandbox_port'),
+              optionalString(args, 'host'),
+              optionalNumber(args, 'host_port'),
             ),
           );
         case 'sandbox_destroy':

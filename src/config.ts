@@ -10,7 +10,6 @@ export interface AppConfig {
   readonly workspaceRoot: string;
   readonly stateDir: string;
   readonly databasePath: string;
-  readonly allowedHostRoots: readonly string[];
   readonly sbxBinary: string;
   readonly sandboxTemplate: string;
   readonly sandboxPort: number;
@@ -22,11 +21,6 @@ export interface AppConfig {
 
 export interface RuntimeConfig extends AppConfig {
   readonly runtimePidPath: string;
-  readonly tunnelEnabled: boolean;
-  readonly tunnelClient: string;
-  readonly tunnelKeyPath: string;
-  readonly tunnelIdPath: string;
-  readonly tunnelHealthUrlPath: string;
 }
 
 function readPort(value: string | undefined, fallback: number, name: string): number {
@@ -103,10 +97,6 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
   const workspaceRoot = resolvePath(
     environment.CHAT2SBX_WORKSPACE_ROOT ?? path.join(dataRoot, 'workspaces'),
   );
-  const allowedHostRoots = (environment.CHAT2SBX_ALLOWED_HOST_ROOTS ?? '')
-    .split(path.delimiter)
-    .filter(Boolean)
-    .map(resolvePath);
 
   return {
     host: environment.CHAT2SBX_HOST ?? '127.0.0.1',
@@ -118,7 +108,6 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
     databasePath: resolvePath(
       environment.CHAT2SBX_DATABASE_PATH ?? path.join(stateDir, 'chat2sbx.sqlite'),
     ),
-    allowedHostRoots,
     sbxBinary: 'sbx',
     sandboxTemplate: 'chat2sbx-codexpro:0.30.0',
     sandboxPort: 18_787,
@@ -134,16 +123,8 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
 
 export function loadRuntimeConfig(environment: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const config = loadAppConfig(environment);
-  const tunnelSecretDir = resolvePath(
-    environment.CHAT2SBX_SECRET_DIR ?? '~/.secrets/tunnel-client',
-  );
   return {
     ...config,
     runtimePidPath: path.join(config.stateDir, 'runtime.pid'),
-    tunnelEnabled: environment.CHAT2SBX_ENABLE_TUNNEL !== '0',
-    tunnelClient: resolvePath(environment.CHAT2SBX_TUNNEL_CLIENT ?? '~/.local/bin/tunnel-client'),
-    tunnelKeyPath: path.join(tunnelSecretDir, 'key'),
-    tunnelIdPath: path.join(tunnelSecretDir, 'tunnel-id'),
-    tunnelHealthUrlPath: path.join(config.stateDir, 'health.url'),
   };
 }

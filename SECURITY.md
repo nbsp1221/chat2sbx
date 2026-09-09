@@ -32,9 +32,9 @@ Examples of security issues include:
 
 - escaping a Docker Sandbox to execute commands on the host;
 - reaching the host Docker daemon or host shell through an MCP tool;
-- accessing a host path that was not managed by chat2sbx or explicitly approved;
+- accessing an arbitrary host path outside the chat2sbx-managed workspace boundary;
 - bypassing sandbox/workspace ownership checks;
-- exposing internal CodexPro bearer tokens or tunnel secrets through the public MCP surface;
+- exposing internal CodexPro bearer tokens through the public MCP surface;
 - unintentionally exposing the MCP server beyond its configured access boundary.
 
 ## Expected behavior
@@ -44,8 +44,8 @@ The following are intentional capabilities and are not vulnerabilities by themse
 - unrestricted shell and package installation inside a selected sandbox;
 - control of the sandbox's private Docker Engine;
 - network access allowed by the underlying Docker Sandboxes policy;
-- modification of an explicitly approved `direct` workspace;
+- modification of files inside a chat2sbx-managed workspace;
 - unauthenticated access to a service intentionally published with `sandbox_expose`;
 - MCP requests being treated as `local-owner` by the current single-user authentication provider.
 
-The MCP endpoint has no built-in authentication. It binds to loopback by default and should be exposed only through an access-controlled transport such as Secure MCP Tunnel. See [docs/architecture.md](./docs/architecture.md) for the canonical trust model.
+The MCP endpoint has no built-in authentication. It binds to loopback by default and should be exposed only through an access-controlled transport such as Secure MCP Tunnel. Transport credentials and lifecycle are external to chat2sbx. See [docs/architecture.md](./docs/architecture.md) for the canonical trust model.

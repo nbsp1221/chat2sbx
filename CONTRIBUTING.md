@@ -42,7 +42,7 @@ The test suite is intentionally separated by boundary:
 - `pnpm test:integration` — multiple chat2sbx components using local resources only
 - `pnpm test:e2e` — real Docker Sandbox microVMs, CodexPro, private Docker, and port exposure
 
-Normal CI runs unit and integration tests. Run E2E tests on a trusted host when changing sandbox lifecycle, workspace modes, CodexPro routing, Bash sessions, or port exposure.
+Normal CI runs unit and integration tests. Run E2E tests on a trusted host when changing sandbox lifecycle, managed workspace behavior, CodexPro routing, Bash sessions, or port exposure.
 
 See [test/README.md](./test/README.md) for the canonical test taxonomy.
 

@@ -37,8 +37,13 @@ class FakeDriver implements SandboxDriver {
     return { endpoint: 'http://127.0.0.1:1234/mcp', runtimeRoot: '/workspace' };
   }
 
-  expose(_name: string, sandboxPort: number): Promise<PublishedPort> {
-    return Promise.resolve({ hostPort: 32_000, sandboxPort });
+  expose(
+    _name: string,
+    sandboxPort: number,
+    host: string,
+    hostPort?: number,
+  ): Promise<PublishedPort> {
+    return Promise.resolve({ host, hostPort: hostPort ?? 32_000, sandboxPort });
   }
 
   isHealthy(): Promise<boolean> {
@@ -72,7 +77,6 @@ class FakeDriver implements SandboxDriver {
 
 function config(base: string): AppConfig {
   return {
-    allowedHostRoots: [path.join(base, 'allowed')],
     dataRoot: path.join(base, 'data'),
     databasePath: ':memory:',
     host: '127.0.0.1',
@@ -101,11 +105,9 @@ function fixture(
   workspaces: WorkspaceService;
 } {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  fs.mkdirSync(path.join(base, 'allowed'));
   const database = new StateDatabase(':memory:');
   const appConfig = config(base);
   const workspaces = new WorkspaceService({
-    allowedHostRoots: appConfig.allowedHostRoots,
     dataRoot: appConfig.dataRoot,
     database,
     workspaceRoot: appConfig.workspaceRoot,
@@ -122,9 +124,6 @@ function fixture(
 }
 
 function sandboxFrom(result: SandboxCreateResult): SandboxSummary {
-  if (!result.sandbox) {
-    throw new Error(`Expected sandbox result, received ${result.status}`);
-  }
   return result.sandbox;
 }
 
@@ -139,9 +138,6 @@ test('explicit sandbox ids are reusable and one active sandbox is kept per works
   expect(secondResult.status).toBe('reused');
   expect(sandboxFrom(secondResult).id).toBe(first.id);
   expect(driver.createCalls).toBe(1);
-  await expect(
-    service.create('owner', { workspaceId: first.workspace.id, workspaceMode: 'clone' }),
-  ).rejects.toThrow(/does not match/);
 
   const destroyed = await service.destroy('owner', first.id);
   expect(destroyed.status).toBe('destroyed');
@@ -151,7 +147,7 @@ test('explicit sandbox ids are reusable and one active sandbox is kept per works
   const replacement = sandboxFrom(
     await service.create('owner', { workspaceId: first.workspace.id }),
   );
-  expect(replacement.workspace.status).toBe('approved');
+  expect(replacement.workspace.status).toBe('active');
 });
 
 test('applies an optional active sandbox limit without blocking reuse or later creation', async () => {
@@ -219,30 +215,27 @@ test('passes an explicit memory limit and rejects changing it on reuse', async (
   await expect(service.create('owner', { memory: '4GB' })).rejects.toThrow(/512m or 4g/);
 });
 
-test('host workspace requests stop at approval_required', async () => {
-  const { base, driver, service } = fixture('chat2sbx-approval-');
-  const repository = path.join(base, 'allowed', 'repo');
-  fs.mkdirSync(repository, { recursive: true });
-
-  const result = await service.create('owner', {
-    workspaceMode: 'direct',
-    workspacePath: repository,
-  });
-  expect(result.status).toBe('approval_required');
-  expect(result.approval?.id ?? '').toMatch(/^approval_/);
-  expect(driver.createCalls).toBe(0);
-});
-
-test('exposes a running sandbox port on an automatically assigned host port', async () => {
+test('exposes a running sandbox port with direct host mapping controls', async () => {
   const { service } = fixture('chat2sbx-expose-');
   const created = sandboxFrom(await service.create('owner', {}));
 
   await expect(service.expose('owner', created.id, 3_000)).resolves.toEqual({
+    host: '127.0.0.1',
     hostPort: 32_000,
     sandboxId: created.id,
     sandboxPort: 3_000,
   });
-  await expect(service.expose('owner', created.id, 0)).rejects.toThrow(/integer from 1 to 65535/);
+  await expect(service.expose('owner', created.id, 3_000, '0.0.0.0', 8_080)).resolves.toEqual({
+    host: '0.0.0.0',
+    hostPort: 8_080,
+    sandboxId: created.id,
+    sandboxPort: 3_000,
+  });
+  await expect(service.expose('owner', created.id, 0)).rejects.toThrow(/sandbox_port/);
+  await expect(service.expose('owner', created.id, 3_000, 'localhost')).rejects.toThrow(/IPv4/);
+  await expect(service.expose('owner', created.id, 3_000, '127.0.0.1', 0)).rejects.toThrow(
+    /host_port/,
+  );
 });
 
 test('an unavailable runtime becomes an explicit failed sandbox without automatic restart', async () => {
@@ -458,7 +451,7 @@ test('destroying a legacy failed record does not conflict with its running repla
 
   await expect(service.destroy('owner', failed.id)).resolves.toMatchObject({ status: 'destroyed' });
   expect(service.get('owner', running.id).status).toBe('running');
-  expect(workspaces.getAvailable('owner', workspace.id).status).toBe('approved');
+  expect(workspaces.getAvailable('owner', workspace.id).status).toBe('active');
 
   now = 50_000;
   await service.destroy('owner', running.id);
@@ -527,7 +520,7 @@ test('idle cleanup rechecks activity after an in-flight call', async () => {
   expect(service.get('owner', created.id).status).toBe('running');
 });
 
-test('a controller restart invalidates runtimes that the new controller does not own', async () => {
+test('a controller restart retires the previous runtime and allows immediate workspace reuse', async () => {
   const { appConfig, database, driver, service, workspaces } = fixture('chat2sbx-reconcile-');
   const created = sandboxFrom(await service.create('owner', {}));
   expect(created.status).toBe('running');
@@ -541,6 +534,45 @@ test('a controller restart invalidates runtimes that the new controller does not
   await restartedController.reconcile();
 
   expect(driver.removeCalls).toBe(1);
-  expect(restartedController.list('owner')[0]?.status).toBe('failed');
-  expect(restartedController.list('owner')[0]?.error ?? '').toMatch(/chat2sbx restarted/);
+  expect(restartedController.get('owner', created.id).status).toBe('destroyed');
+  expect(restartedController.list('owner')).toEqual([]);
+  expect(workspaces.getAvailable('owner', created.workspace.id).status).toBe('retained');
+
+  const replacement = sandboxFrom(
+    await restartedController.create('owner', { workspaceId: created.workspace.id }),
+  );
+  expect(replacement.status).toBe('running');
+  expect(replacement.workspace.status).toBe('active');
+});
+
+test('controller reconciliation records cleanup failures without blocking service startup', async () => {
+  const { appConfig, database, driver, service, workspaces } = fixture(
+    'chat2sbx-reconcile-failure-',
+  );
+  const created = sandboxFrom(await service.create('owner', {}));
+  driver.removeError = new Error('sbx rm failed');
+
+  const restartedController = new SandboxService({
+    config: appConfig,
+    database,
+    driver,
+    workspaces,
+  });
+  await expect(restartedController.reconcile()).resolves.toBeUndefined();
+
+  expect(restartedController.get('owner', created.id)).toMatchObject({
+    status: 'failed',
+    destroyedAt: undefined,
+  });
+  expect(restartedController.get('owner', created.id).error ?? '').toMatch(/sbx rm failed/);
+  expect(workspaces.getAvailable('owner', created.workspace.id).status).toBe('active');
+  await expect(
+    restartedController.create('owner', { workspaceId: created.workspace.id }),
+  ).rejects.toThrow(/sandbox in failed state/);
+
+  driver.removeError = undefined;
+  await restartedController.destroy('owner', created.id);
+  await expect(
+    restartedController.create('owner', { workspaceId: created.workspace.id }),
+  ).resolves.toMatchObject({ status: 'created' });
 });
