@@ -38,7 +38,7 @@ pnpm test:e2e
 
 E2E tests require a trusted chat2sbx host with the `sbx` executable and the `chat2sbx-codexpro:0.30.0` template installed. The command fails when those prerequisites are unavailable; it does not silently skip the suite.
 
-Real E2E tests do not run on ordinary GitHub-hosted CI. Run them on a trusted development host before changes that affect the sandbox boundary, lifecycle, workspace modes, CodexPro routing, or port exposure.
+Real E2E tests do not run on ordinary GitHub-hosted CI. Run them on a trusted development host before changes that affect the sandbox boundary, lifecycle, managed workspace behavior, CodexPro routing, or port exposure.
 
 ## Coverage
 

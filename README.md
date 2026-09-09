@@ -188,7 +188,7 @@ The sandbox CLI commands are intentionally thin local-MCP clients. They require 
 
 ## Configuration
 
-The defaults are intentionally small. `.env.example` contains the complete set of environment overrides.
+The defaults are intentionally small. The table below contains the complete set of environment overrides.
 
 | Variable                        | Default                       | Purpose                       |
 | ------------------------------- | ----------------------------- | ----------------------------- |
