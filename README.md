@@ -3,6 +3,10 @@
 <p align="center"><strong>Give ChatGPT a computer you can safely throw away.</strong></p>
 
 <p align="center">
+  <strong>English</strong> · <a href="./README.ko.md">한국어</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/nbsp1221/chat2sbx/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nbsp1221/chat2sbx/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="https://www.npmjs.com/package/chat2sbx"><img alt="npm" src="https://img.shields.io/npm/v/chat2sbx?style=flat-square&logo=npm"></a>
   <a href="https://nodejs.org/"><img alt="Node.js >=24" src="https://img.shields.io/badge/Node.js-%3E%3D24-339933?style=flat-square&logo=nodedotjs&logoColor=white"></a>
@@ -20,11 +24,11 @@
 
 ## What is chat2sbx?
 
-`chat2sbx` is a lightweight MCP control plane that gives ChatGPT a capable development environment inside disposable [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) microVMs.
+`chat2sbx` is a lightweight MCP control plane that lets ChatGPT use disposable [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) microVMs running on your own hardware.
 
-Each sandbox gets its own shell, chat2sbx-managed workspace, CodexPro process, and private Docker Engine. The host shell, host Docker daemon, and arbitrary host paths stay outside the execution boundary.
+Docker Sandboxes provides the isolated computers; chat2sbx adds persistent workspace and lifecycle control so you can use them from your ChatGPT web session without giving ChatGPT your host shell, host Docker daemon, or arbitrary host paths.
 
-CodexPro is the in-sandbox MCP adapter chat2sbx uses for file, repository, and shell tools. `chat2sbx setup` installs the pinned CodexPro version into the local sandbox template, so no separate CodexPro installation is required on the host.
+Each sandbox gets its own shell, chat2sbx-managed workspace, CodexPro process, and private Docker Engine. CodexPro is the in-sandbox MCP adapter chat2sbx uses for file, repository, and shell tools. `chat2sbx setup` installs the pinned CodexPro version into the local sandbox template, so no separate CodexPro installation is required on the host.
 
 ### Why use it?
 
@@ -99,27 +103,45 @@ In another terminal:
 chat2sbx status
 ```
 
-The MCP endpoint binds to loopback at `http://127.0.0.1:18788/mcp` by default. `chat2sbx serve` intentionally stays in the foreground and exits on Ctrl+C or SIGTERM. For always-on use, supervise it with the operating system's service manager rather than relying on chat2sbx to daemonize itself. chat2sbx does not expose or authenticate the MCP endpoint for you.
+You should see the service running and MCP ready. The endpoint binds to `http://127.0.0.1:18788/mcp` by default.
+
+`chat2sbx serve` intentionally stays in the foreground and exits on Ctrl+C or SIGTERM. For always-on use, supervise it with the operating system's service manager rather than relying on chat2sbx to daemonize itself. chat2sbx does not expose or authenticate the MCP endpoint for you.
 
 ### 4. Connect ChatGPT
 
-For ChatGPT, the recommended transport is OpenAI Secure MCP Tunnel. chat2sbx does not install, configure, authenticate, or supervise `tunnel-client`; use OpenAI's [Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) and run the official client separately.
+For ChatGPT, the recommended transport is [OpenAI Secure MCP Tunnel](https://github.com/openai/tunnel-client/blob/master/docs/end-user-guide.md). chat2sbx does not install, configure, authenticate, or supervise `tunnel-client`; the official client runs separately.
 
-The simplest environment-variable flow is:
+You need two different values from OpenAI Platform:
+
+- `CONTROL_PLANE_TUNNEL_ID` — the tunnel ID from [Tunnels management](https://platform.openai.com/settings/organization/tunnels).
+- `CONTROL_PLANE_API_KEY` — a runtime API key from [Runtime API keys](https://platform.openai.com/settings/organization/api-keys). This is not the tunnel ID or an admin key.
+
+With those values, the smallest environment-variable flow is:
 
 ```bash
 export CONTROL_PLANE_TUNNEL_ID='tunnel_...'
 export CONTROL_PLANE_API_KEY='...'
 export MCP_SERVER_URL='http://127.0.0.1:18788/mcp'
+
 tunnel-client doctor --explain
 tunnel-client run
 ```
 
-`tunnel-client` also supports its official profile/`init` workflow. Keep tunnel credentials in the mechanism recommended by OpenAI rather than in chat2sbx configuration.
+Keep `tunnel-client run` running. Then open [ChatGPT connector settings](https://chatgpt.com/#settings/Connectors), create or configure a connector with **Connection: Tunnel**, and select the same tunnel or paste its `tunnel_id`.
 
-## Example workflow
+If the tunnel is missing from ChatGPT, the official [Tunnel End-User Guide](https://github.com/openai/tunnel-client/blob/master/docs/end-user-guide.md) covers workspace scope and **Tunnels Read + Use** permissions. `tunnel-client` also supports its profile/`init` workflow if you prefer named configuration over environment variables.
 
-Once connected, ChatGPT can create an isolated workspace and use the returned `sandbox_id` for subsequent tools:
+### 5. Verify your first sandbox
+
+In ChatGPT, ask:
+
+> Create a new sandbox. Run `uname -a` and `docker version` inside it, then tell me the sandbox ID and workspace ID.
+
+A successful run should make ChatGPT create a sandbox, execute both commands inside the microVM, and return stable `sandbox_id` and `workspace_id` values. If that works, your ChatGPT → tunnel → chat2sbx → Docker Sandbox path is ready.
+
+## What ChatGPT can do
+
+Once connected, ChatGPT can create an isolated workspace and use its `sandbox_id` for later tools:
 
 ```text
 sandbox_create
@@ -203,6 +225,26 @@ The defaults are intentionally small. The table below contains the complete set 
 The same sandbox limit can be stored in `~/.chat2sbx/config.json` as `maxActiveSandboxes`; the environment variable takes precedence. `chat2sbx status` shows the effective limit and active count. Configuration is read when `chat2sbx serve` starts.
 
 Global sandbox instructions live at `~/.chat2sbx/AGENTS.md` by default. Changes to that file are read on the next `sandbox_create` or `sandbox_get` and do not require a server restart.
+
+## Troubleshooting
+
+### ChatGPT cannot see or use chat2sbx
+
+1. Run `chat2sbx status` and confirm MCP is ready.
+2. Run `tunnel-client doctor --explain` and keep `tunnel-client run` alive.
+3. Confirm ChatGPT is configured with **Connection: Tunnel** and the same `tunnel_id` used by `tunnel-client`.
+4. If the tunnel does not appear, verify its ChatGPT workspace scope and **Tunnels Read + Use** permissions in the official [Tunnel End-User Guide](https://github.com/openai/tunnel-client/blob/master/docs/end-user-guide.md).
+
+### A sandbox is stuck or failed
+
+List the records and explicitly destroy the failed sandbox:
+
+```bash
+chat2sbx sandbox list
+chat2sbx sandbox destroy <id>
+```
+
+For Docker Sandbox runtime diagnostics, use the underlying `sbx` commands such as `sbx diagnose`, `sbx reset`, and `sbx prune` rather than a separate chat2sbx recovery layer.
 
 ## Documentation
 
