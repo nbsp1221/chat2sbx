@@ -35,7 +35,7 @@
     "start": "node dist/cli.mjs serve",
     "test": "vitest run --project unit --project integration",
     "test:coverage": "vitest run --coverage --project unit --project integration",
-    "test:e2e": "vitest run --project e2e",
+    "test:e2e": "pnpm build && vitest run --project e2e",
     "test:integration": "vitest run --project integration",
     "test:unit": "vitest run --project unit",
     "test:watch": "vitest --project unit --project integration",

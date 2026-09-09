@@ -259,6 +259,17 @@ export class StateDatabase {
       .map(sandboxFromRow);
   }
 
+  listSandboxesForReconciliation(): readonly Sandbox[] {
+    // Retired host capabilities remain hidden publicly, but their runtimes still need cleanup.
+    return this.#database
+      .prepare(`SELECT * FROM sandboxes
+        WHERE status IN ('creating', 'running', 'destroying')
+          OR (status = 'failed' AND destroyed_at IS NULL)
+        ORDER BY created_at DESC`)
+      .all()
+      .map(sandboxFromRow);
+  }
+
   countActiveSandboxes(): number {
     const row = this.#database
       .prepare(`SELECT COUNT(*) AS count FROM sandboxes

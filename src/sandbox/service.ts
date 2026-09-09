@@ -254,7 +254,7 @@ export class SandboxService {
 
   async reconcile(): Promise<void> {
     const runtimes = new Map((await this.#driver.list()).map((runtime) => [runtime.name, runtime]));
-    for (const sandbox of this.#database.listActiveSandboxes()) {
+    for (const sandbox of this.#database.listSandboxesForReconciliation()) {
       const runtime = runtimes.get(sandbox.runtimeName);
       try {
         if (runtime) {

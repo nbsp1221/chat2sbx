@@ -1,4 +1,4 @@
-import { type ChildProcess, execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { createServer } from 'node:net';
 import { promisify } from 'node:util';
 import type { Workspace } from '../domain/types.js';
@@ -53,7 +53,6 @@ export class SbxDriver implements SandboxDriver {
   readonly #binary: string;
   readonly #template: string;
   readonly #sandboxPort: number;
-  readonly #codexProProcesses = new Map<string, ChildProcess>();
 
   constructor(options: { binary: string; template: string; sandboxPort: number }) {
     this.#binary = options.binary;
@@ -112,17 +111,18 @@ export class SbxDriver implements SandboxDriver {
   }
 
   async startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string): Promise<void> {
-    if (this.#codexProProcesses.has(runtimeName)) {
-      throw new Error(`CodexPro is already running in ${runtimeName}`);
-    }
-    const child = spawn(
-      this.#binary,
+    // sbx 0.39 waits for guest exit even with -d (docker/sbx-releases#505).
+    // Background the VM-owned service inside the guest so the host exec is short-lived.
+    await this.#run(
       [
         'exec',
-        '-i',
         '-e',
         'CODEXPRO_HTTP_TOKEN',
         runtimeName,
+        'sh',
+        '-c',
+        'nohup "$@" </dev/null >/tmp/chat2sbx-codexpro.log 2>&1 &',
+        'chat2sbx-codexpro',
         'codexpro-mcp-http',
         '--root',
         runtimeRoot,
@@ -139,24 +139,9 @@ export class SbxDriver implements SandboxDriver {
         '--tool-mode',
         'standard',
       ],
-      {
-        env: { ...process.env, CODEXPRO_HTTP_TOKEN: authToken },
-        stdio: ['pipe', 'ignore', 'inherit'],
-      },
+      30_000,
+      { ...process.env, CODEXPRO_HTTP_TOKEN: authToken },
     );
-    this.#codexProProcesses.set(runtimeName, child);
-    child.once('exit', () => {
-      if (this.#codexProProcesses.get(runtimeName) === child) {
-        this.#codexProProcesses.delete(runtimeName);
-      }
-    });
-    await new Promise<void>((resolve, reject) => {
-      child.once('spawn', resolve);
-      child.once('error', reject);
-    }).catch((error) => {
-      this.#codexProProcesses.delete(runtimeName);
-      throw error;
-    });
   }
 
   async waitUntilHealthy(endpoint: string, authToken: string, timeoutMs = 15_000): Promise<void> {
@@ -226,9 +211,6 @@ export class SbxDriver implements SandboxDriver {
     if ((await this.list()).some((runtime) => runtime.name === runtimeName)) {
       await this.#run(['rm', '--force', runtimeName], 120_000);
     }
-    const child = this.#codexProProcesses.get(runtimeName);
-    this.#codexProProcesses.delete(runtimeName);
-    child?.kill('SIGTERM');
   }
 
   async list(): Promise<readonly RuntimeInfo[]> {
@@ -279,10 +261,12 @@ export class SbxDriver implements SandboxDriver {
   async #run(
     args: readonly string[],
     timeout = 30_000,
+    env: NodeJS.ProcessEnv = process.env,
   ): Promise<{ stdout: string; stderr: string }> {
     try {
       return await execFileAsync(this.#binary, [...args], {
         encoding: 'utf8',
+        env,
         timeout,
         maxBuffer: 20 * 1024 * 1024,
       });

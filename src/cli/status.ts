@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import type { RuntimeConfig } from '../config.js';
+import { gatewayUrl } from '../runtime/gateway-url.js';
 
 async function isReady(url: string): Promise<boolean> {
   try {
@@ -34,7 +35,7 @@ export async function status(config: RuntimeConfig): Promise<boolean> {
     return false;
   }
 
-  const mcpReady = await isReady(`http://${config.host}:${config.port}/healthz`);
+  const mcpReady = await isReady(gatewayUrl(config, '/healthz'));
 
   console.log(`Service  running (PID ${pid})`);
   console.log(`MCP      ${mcpReady ? `ready at ${config.host}:${config.port}` : 'not ready'}`);

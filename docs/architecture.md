@@ -63,7 +63,7 @@ MCP callers cannot request arbitrary host paths. Repository workflows happen ins
 4. Atomically enforce the optional active-sandbox count limit and persist a `creating` record before invoking external commands.
 5. Create a named `shell` microVM from the pinned CodexPro template with Docker Sandboxes resource defaults, an optional caller-supplied memory limit, and one dynamic loopback port.
 6. Generate a random CodexPro bearer token.
-7. Start CodexPro inside the microVM with full bash, workspace writes, and only the sandbox workspace as an allowed root.
+7. Start CodexPro as a background process inside the microVM with full bash, workspace writes, and only the sandbox workspace as an allowed root. The host `sbx exec` returns after launching it; health checks confirm readiness. CodexPro stdout/stderr go to `/tmp/chat2sbx-codexpro.log` inside the microVM, not the host server console. The process shares the microVM lifetime; stopping the controller does not delete the microVM, and the existing startup reconciliation retires it on the next start.
 8. Verify its authenticated health endpoint and persist the endpoint and token in the mode-`0600` SQLite database.
 9. Return a safe summary that omits the token, endpoint, runtime name, and runtime path and includes the exact global instructions read before creation.
 

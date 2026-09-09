@@ -1,13 +1,43 @@
+import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
+import { callLocalTool } from '../../src/cli/local-mcp.js';
 import { runCli } from '../../src/cli/program.js';
 import { loadAppConfig } from '../../src/config.js';
 import { StateDatabase } from '../../src/state/database.js';
 import { WorkspaceService } from '../../src/workspaces/service.js';
 
 const roots: string[] = [];
+
+test('connects local sandbox commands to an IPv6 gateway', async () => {
+  await environment();
+  const requests: string[] = [];
+  const server = createServer((request, response) => {
+    requests.push(request.url ?? '');
+    response.end(JSON.stringify({ result: { structuredContent: { ok: true } } }));
+  });
+  server.listen(0, '::1');
+  await once(server, 'listening');
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Expected TCP listener');
+  }
+  const config = { ...loadAppConfig(), host: '::1', port: address.port };
+  try {
+    expect(await callLocalTool(config, 'sandbox_list')).toEqual({ ok: true });
+    expect(await callLocalTool(config, 'sandbox_destroy', { sandbox_id: 'test' })).toEqual({
+      ok: true,
+    });
+    expect(requests).toEqual(['/mcp', '/mcp']);
+  } finally {
+    server.close();
+    server.closeAllConnections();
+    await once(server, 'close');
+  }
+});
 
 afterEach(async () => {
   vi.restoreAllMocks();

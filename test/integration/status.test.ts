@@ -56,13 +56,13 @@ test('ignores legacy host sandboxes in the active count', async () => {
   expect(output).toContain('Sandboxes 0 active / unlimited max');
 });
 
-test('checks the running process and MCP health', async () => {
+test.each(['127.0.0.1', '::1'])('checks the running process and MCP health on %s', async (host) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'chat2sbx-status-'));
   roots.push(root);
   const server = http.createServer((_request, response) => {
     response.writeHead(200).end('{"status":"ok"}');
   });
-  server.listen(0, '127.0.0.1');
+  server.listen(0, host);
   await once(server, 'listening');
   const address = server.address();
   if (!address || typeof address === 'string') {
@@ -72,6 +72,7 @@ test('checks the running process and MCP health', async () => {
   const config = loadRuntimeConfig({
     CHAT2SBX_DATA_ROOT: path.join(root, '.chat2sbx'),
     CHAT2SBX_PORT: String(address.port),
+    CHAT2SBX_HOST: host,
   });
   await mkdir(config.stateDir, { recursive: true });
   await writeFile(config.runtimePidPath, `${process.pid}\n`);
@@ -82,7 +83,7 @@ test('checks the running process and MCP health', async () => {
     expect(await status(config)).toBe(true);
     expect(output).toEqual([
       `Service  running (PID ${process.pid})`,
-      `MCP      ready at 127.0.0.1:${address.port}`,
+      `MCP      ready at ${host}:${address.port}`,
       'Sandboxes 0 active / unlimited max',
     ]);
   } finally {

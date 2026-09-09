@@ -12,6 +12,7 @@ import { SbxDriver } from '../sandbox/sbx-driver.js';
 import { SandboxService } from '../sandbox/service.js';
 import { StateDatabase } from '../state/database.js';
 import { WorkspaceService } from '../workspaces/service.js';
+import { gatewayUrl } from './gateway-url.js';
 
 async function claimRuntime(config: RuntimeConfig): Promise<void> {
   await mkdir(config.stateDir, { mode: 0o700, recursive: true });
@@ -99,7 +100,7 @@ async function runRuntime(config: RuntimeConfig): Promise<void> {
       },
     });
     await listen(server, config);
-    console.log(`[chat2sbx] MCP ready at http://${config.host}:${config.port}/mcp`);
+    console.log(`[chat2sbx] MCP ready at ${gatewayUrl(config, '/mcp')}`);
     console.log(`[chat2sbx] ${codexProTools.length} CodexPro tools are sandbox-scoped`);
 
     reaper = setInterval(() => {

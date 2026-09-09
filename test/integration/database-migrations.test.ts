@@ -2,14 +2,72 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { expect, onTestFinished, test } from 'vitest';
+import { expect, onTestFinished, test, vi } from 'vitest';
+import { loadAppConfig } from '../../src/config.js';
+import { SbxDriver } from '../../src/sandbox/sbx-driver.js';
+import { SandboxService } from '../../src/sandbox/service.js';
 import { StateDatabase } from '../../src/state/database.js';
+import { WorkspaceService } from '../../src/workspaces/service.js';
 
 function databasePath(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2sbx-migration-'));
   onTestFinished(() => fs.rmSync(root, { force: true, recursive: true }));
   return path.join(root, 'chat2sbx.sqlite');
 }
+
+test.each([false, true])(
+  'reconciles hidden host runtimes without touching host files (cleanup failure=%s)',
+  async (fail) => {
+    const file = databasePath();
+    const config = loadAppConfig({ CHAT2SBX_DATA_ROOT: path.dirname(file) });
+    const database = new StateDatabase(file);
+    const raw = new DatabaseSync(file);
+    onTestFinished(() => {
+      raw.close();
+      database.close();
+    });
+    const hostRoot = path.join(path.dirname(file), 'host');
+    fs.mkdirSync(hostRoot);
+    fs.writeFileSync(path.join(hostRoot, 'keep.txt'), 'host data');
+    raw
+      .prepare(`INSERT INTO workspaces (id,owner_id,kind,mode,root,status,created_at)
+    VALUES ('legacy','owner','host','direct',?,'approved',1)`)
+      .run(hostRoot);
+    raw.exec(`INSERT INTO sandboxes (id,owner_id,workspace_id,runtime_name,status,created_at,last_activity_at,expires_at)
+    VALUES ('old','owner','legacy','old-runtime','running',1,1,99999)`);
+    const workspaces = new WorkspaceService({
+      database,
+      dataRoot: config.dataRoot,
+      workspaceRoot: config.workspaceRoot,
+    });
+    const driver = new SbxDriver({ binary: 'unused', template: 'unused', sandboxPort: 18787 });
+    vi.spyOn(driver, 'list').mockResolvedValue([
+      { name: 'old-runtime', status: 'running' },
+      { name: 'unrelated', status: 'running' },
+    ]);
+    const remove = vi.spyOn(driver, 'remove');
+    if (fail) {
+      remove.mockRejectedValue(new Error('cleanup failed'));
+    } else {
+      remove.mockResolvedValue();
+    }
+    const service = new SandboxService({ database, workspaces, driver, config });
+    await service.reconcile();
+    expect(remove.mock.calls).toEqual([['old-runtime']]);
+    expect(raw.prepare('SELECT status FROM sandboxes').get()?.status).toBe(
+      fail ? 'failed' : 'destroyed',
+    );
+    expect(database.listSandboxesForReconciliation()).toHaveLength(fail ? 1 : 0);
+    expect(database.listCurrentSandboxes('owner')).toEqual([]);
+    if (fail) {
+      remove.mockResolvedValue();
+      await service.reconcile();
+      expect(database.listSandboxesForReconciliation()).toHaveLength(0);
+    }
+    expect(fs.readFileSync(path.join(hostRoot, 'keep.txt'), 'utf8')).toBe('host data');
+    expect(raw.prepare('SELECT root FROM workspaces').get()?.root).toBe(hostRoot);
+  },
+);
 
 function version(database: DatabaseSync): number {
   return Number(database.prepare('PRAGMA user_version').get()?.user_version ?? 0);

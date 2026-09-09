@@ -1,4 +1,5 @@
 import type { AppConfig } from '../config.js';
+import { gatewayUrl } from '../runtime/gateway-url.js';
 
 interface RpcError {
   readonly message?: string;
@@ -32,7 +33,7 @@ export async function callLocalTool(
   name: 'sandbox_destroy' | 'sandbox_list',
   args: Record<string, unknown> = {},
 ): Promise<unknown> {
-  const url = `http://${config.host}:${String(config.port)}/mcp`;
+  const url = gatewayUrl(config, '/mcp');
   let response: Response;
   try {
     response = await fetch(url, {
