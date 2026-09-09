@@ -104,7 +104,7 @@ Every tool call that reaches a running sandbox renews its idle deadline, whether
 An expired workspace is not archived while it has a sandbox in `creating`, `running`, `destroying`, or `failed` state. Archived workspaces are not automatically deleted and are not currently selectable for a new sandbox.
 
 At controller startup, persisted active records are reconciled with `sbx ls`.
-A microVM left by a previous controller is not resumed because its foreground CodexPro session belonged to that controller. If runtime cleanup succeeds, the sandbox is recorded as `destroyed`, its managed workspace is retained, and that workspace can be used immediately for a replacement sandbox.
+A microVM left by a previous controller is not resumed; startup reconciliation retires it before the MCP gateway accepts requests. If runtime cleanup succeeds, the sandbox is recorded as `destroyed`, its managed workspace is retained, and that workspace can be used immediately for a replacement sandbox.
 If runtime cleanup fails during reconciliation, that sandbox is recorded as `failed` with the cleanup error while reconciliation continues for other sandboxes. An unhealthy CodexPro runtime also becomes `failed`; explicit destruction retries cleanup.
 The user must destroy a failed sandbox before creating a replacement for the same workspace; failures in other workspaces do not block creation. chat2sbx does not restart CodexPro or recover the old runtime automatically.
 Reconciliation completes before the MCP gateway begins listening and has no chat2sbx-imposed time limit.
