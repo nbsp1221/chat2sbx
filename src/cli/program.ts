@@ -4,6 +4,7 @@ import { serve } from '../runtime/serve.js';
 import { StateDatabase } from '../state/database.js';
 import { version } from '../version.js';
 import { WorkspaceService } from '../workspaces/service.js';
+import { callLocalTool } from './local-mcp.js';
 import { setup } from './setup.js';
 import { status } from './status.js';
 
@@ -49,6 +50,28 @@ export function createCli(): CAC {
     }
     listWorkspaces();
   });
+
+  cli
+    .command('sandbox <action> [id]', 'List or destroy sandboxes through the local MCP gateway')
+    .action(async (action: string, id?: string) => {
+      const config = loadAppConfig();
+      if (action === 'list') {
+        if (id) {
+          throw new Error('sandbox list does not accept an ID');
+        }
+        console.log(JSON.stringify(await callLocalTool(config, 'sandbox_list'), null, 2));
+        return;
+      }
+      if (action !== 'destroy') {
+        throw new Error(`Unknown sandbox action: ${action}`);
+      }
+      if (!id) {
+        throw new Error('sandbox destroy requires an ID');
+      }
+      console.log(
+        JSON.stringify(await callLocalTool(config, 'sandbox_destroy', { sandbox_id: id }), null, 2),
+      );
+    });
 
   cli.command('help [command]', 'Show help for a command').action((commandName?: string) => {
     if (!commandName) {

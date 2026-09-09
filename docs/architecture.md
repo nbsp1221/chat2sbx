@@ -33,7 +33,7 @@ The npm package exposes one `chat2sbx` executable. `chat2sbx serve` is the only 
 
 The writable SQLite connection checks the application-owned `user_version` and applies all pending forward migrations in one transaction before exposing the database to application logic. Fresh and existing databases follow the same ordered migration list. Reopening an up-to-date database is a no-op, while a database created by a newer unsupported chat2sbx version fails before any application work. There is no manual migration command, down migration, or schema-dependent branch in business logic.
 
-There is no shell-script supervisor, fixed startup timeout, daemon mode, automatic restart, or service installation. A process manager may supervise `chat2sbx serve`, but those policies remain outside the product. `chat2sbx status` reads the runtime PID and probes the local MCP gateway.
+There is no shell-script supervisor, fixed startup timeout, daemon mode, automatic restart, or service installation. A process manager may supervise `chat2sbx serve`, but those policies remain outside the product. `chat2sbx status` reads the runtime PID and probes the local MCP gateway. `chat2sbx sandbox list` and `chat2sbx sandbox destroy <id>` are thin operator clients for the same local MCP lifecycle tools; they do not access SQLite or invoke `sbx` directly and do not depend on the external tunnel.
 
 ## Port exposure
 

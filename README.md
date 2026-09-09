@@ -180,7 +180,11 @@ chat2sbx setup                         Check prerequisites and prepare the sandb
 chat2sbx serve                         Run the local MCP gateway in the foreground
 chat2sbx status                        Show service and MCP readiness
 chat2sbx workspace list                List managed workspaces
+chat2sbx sandbox list                  List sandboxes through the local MCP gateway
+chat2sbx sandbox destroy <id>          Destroy a sandbox through the local MCP gateway
 ```
+
+The sandbox CLI commands are intentionally thin local-MCP clients. They require `chat2sbx serve` to be running, but do not depend on the external Secure MCP Tunnel. Docker Sandbox diagnostics and reset/prune operations remain the responsibility of the underlying `sbx` CLI.
 
 ## Configuration
 

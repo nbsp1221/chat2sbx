@@ -7,6 +7,7 @@ test('exposes only the supported CLI commands', () => {
     'serve',
     'status',
     'workspace <action>',
+    'sandbox <action> [id]',
     'help [command]',
   ]);
 });
