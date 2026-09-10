@@ -34,19 +34,23 @@ Docker Sandboxes가 격리된 컴퓨터를 만든다면, chat2sbx는 그 환경�
 - [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/install/) (`sbx`)
 - ChatGPT에서 사용하려면 [OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) 사용 권한
 
-chat2sbx를 설치하고 샌드박스 템플릿을 준비합니다.
+chat2sbx를 설치하고 Docker Sandboxes에 로그인합니다.
 
 ```bash
 npm install --global chat2sbx
 sbx login
-chat2sbx setup
 ```
 
-헤드리스 서버에서는 Docker Sandboxes의 네트워크 정책을 한 번 초기화해야 할 수 있습니다. 예: `sbx policy init balanced`
-
-chat2sbx를 실행합니다.
+헤드리스나 비대화형 환경에서는 setup 전에 Docker Sandboxes의 네트워크 정책을 초기화합니다.
 
 ```bash
+sbx policy init balanced
+```
+
+대화형 환경에서는 처음 사용할 때 네트워크 정책을 직접 선택하라는 안내가 나오므로 위 명령을 생략해도 됩니다. 그다음 샌드박스 템플릿을 준비하고 chat2sbx를 실행합니다.
+
+```bash
+chat2sbx setup
 chat2sbx serve
 ```
 

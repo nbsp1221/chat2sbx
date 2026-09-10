@@ -34,19 +34,23 @@ If you already use Docker Sandboxes, chat2sbx adds the ChatGPT-facing control la
 - [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/install/) (`sbx`)
 - [OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) access to use chat2sbx from ChatGPT
 
-Install chat2sbx and prepare its sandbox template:
+Install chat2sbx and sign in to Docker Sandboxes:
 
 ```bash
 npm install --global chat2sbx
 sbx login
-chat2sbx setup
 ```
 
-On a headless host, Docker Sandboxes may also need its network policy initialized once, for example with `sbx policy init balanced`.
-
-Start chat2sbx:
+On a headless or non-interactive host, initialize the Docker Sandboxes network policy before setup:
 
 ```bash
+sbx policy init balanced
+```
+
+Interactive machines prompt for a network preset on first use, so you can skip that command there. Then prepare the sandbox template and start chat2sbx:
+
+```bash
+chat2sbx setup
 chat2sbx serve
 ```
 
