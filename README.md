@@ -16,107 +16,51 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
+  <a href="#how-it-works">How it works</a> ·
   <a href="./docs/architecture.md">Architecture</a> ·
   <a href="./SECURITY.md">Security</a> ·
-  <a href="./CONTRIBUTING.md">Contributing</a> ·
-  <a href="./ROADMAP.md">Roadmap</a>
+  <a href="./CONTRIBUTING.md">Contributing</a>
 </p>
 
-## What is chat2sbx?
+`chat2sbx` connects ChatGPT to disposable [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) microVMs running on your own machine. ChatGPT gets a real shell, files, packages, servers, and Docker without getting your host shell or host Docker daemon.
 
-`chat2sbx` is a lightweight MCP control plane that lets ChatGPT use disposable [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) microVMs running on your own hardware.
-
-Docker Sandboxes provides the isolated computers; chat2sbx adds persistent workspace and lifecycle control so you can use them from your ChatGPT web session without giving ChatGPT your host shell, host Docker daemon, or arbitrary host paths.
-
-Each sandbox gets its own shell, chat2sbx-managed workspace, CodexPro process, and private Docker Engine. CodexPro is the in-sandbox MCP adapter chat2sbx uses for file, repository, and shell tools. `chat2sbx setup` installs the pinned CodexPro version into the local sandbox template, so no separate CodexPro installation is required on the host.
-
-### Why use it?
-
-- **Capable by default** — run shell commands, install packages, start servers, and use Docker inside the sandbox.
-- **Isolated from the host** — ChatGPT never receives raw host shell, host sudo, or host Docker access.
-- **Persistent managed workspaces** — sandbox files survive sandbox replacement without exposing arbitrary host paths.
-- **Built for agent workflows** — stable sandbox/workspace IDs, long-running Bash sessions, port exposure, and reusable global instructions work across conversations.
-
-## How it works
-
-```text
-ChatGPT
-  │
-  │ MCP
-  ▼
-Secure MCP Tunnel (external, recommended)
-  │
-  ▼
-chat2sbx (host, loopback only)
-  │
-  ├─ workspace / sandbox registry
-  │
-  └─ Docker Sandbox microVM
-       ├─ managed workspace
-       ├─ CodexPro
-       ├─ unrestricted sandbox shell
-       └─ private Docker Engine
-```
-
-The diagram is intentionally simplified. See [Architecture](./docs/architecture.md) for the trust boundaries, lifecycle rules, Bash session contract, and workspace model.
-
-## Prerequisites
-
-- **Node.js 24+**
-- **[Docker Sandboxes](https://docs.docker.com/ai/sandboxes/install/)** (`sbx`), signed in with `sbx login`
-- For ChatGPT access: **OpenAI Secure MCP Tunnel** access and the tunnel client configured for your account
-
-Docker Sandboxes requires a global network-policy preset before it can create sandboxes. On an interactive machine Docker prompts for one on first use. On a headless/non-interactive host, initialize it explicitly before running chat2sbx; Docker recommends `balanced` for most development workflows:
-
-```bash
-sbx login
-sbx policy init balanced
-```
-
-Choose a different Docker Sandboxes policy if your environment requires it; chat2sbx does not override Docker's network policy.
+If you already use Docker Sandboxes, chat2sbx adds the ChatGPT-facing control layer: create and reuse sandboxes, keep workspaces between sandbox instances, run long commands, and expose local ports.
 
 ## Quick start
 
-### 1. Install chat2sbx
+### Prerequisites
+
+- Node.js 24+
+- [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/install/) (`sbx`)
+- [OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) access to use chat2sbx from ChatGPT
+
+Install chat2sbx and prepare its sandbox template:
 
 ```bash
 npm install --global chat2sbx
-```
-
-### 2. Prepare the sandbox template
-
-```bash
+sbx login
 chat2sbx setup
 ```
 
-`setup` checks Docker Sandboxes and creates the pinned `chat2sbx-codexpro:0.30.0` template when needed.
+On a headless host, Docker Sandboxes may also need its network policy initialized once, for example with `sbx policy init balanced`.
 
-### 3. Start the local MCP server
+Start chat2sbx:
 
 ```bash
 chat2sbx serve
 ```
 
-In another terminal:
+You can check it from another terminal:
 
 ```bash
 chat2sbx status
 ```
 
-You should see the service running and MCP ready. The endpoint binds to `http://127.0.0.1:18788/mcp` by default.
+The MCP server listens on `http://127.0.0.1:18788/mcp` by default.
 
-`chat2sbx serve` intentionally stays in the foreground and exits on Ctrl+C or SIGTERM. For always-on use, supervise it with the operating system's service manager rather than relying on chat2sbx to daemonize itself. chat2sbx does not expose or authenticate the MCP endpoint for you.
+### Connect ChatGPT
 
-### 4. Connect ChatGPT
-
-For ChatGPT, the recommended transport is [OpenAI Secure MCP Tunnel](https://github.com/openai/tunnel-client/blob/master/docs/end-user-guide.md). chat2sbx does not install, configure, authenticate, or supervise `tunnel-client`; the official client runs separately.
-
-You need two different values from OpenAI Platform:
-
-- `CONTROL_PLANE_TUNNEL_ID` — the tunnel ID from [Tunnels management](https://platform.openai.com/settings/organization/tunnels).
-- `CONTROL_PLANE_API_KEY` — a runtime API key from [Runtime API keys](https://platform.openai.com/settings/organization/api-keys). This is not the tunnel ID or an admin key.
-
-With those values, the smallest environment-variable flow is:
+Create a tunnel and runtime API key in OpenAI Platform, then run the official `tunnel-client` against the local MCP server:
 
 ```bash
 export CONTROL_PLANE_TUNNEL_ID='tunnel_...'
@@ -127,141 +71,102 @@ tunnel-client doctor --explain
 tunnel-client run
 ```
 
-Keep `tunnel-client run` running. Then open [ChatGPT connector settings](https://chatgpt.com/#settings/Connectors), create or configure a connector with **Connection: Tunnel**, and select the same tunnel or paste its `tunnel_id`.
+Keep the tunnel client running. In ChatGPT, create a developer-mode app, choose **Tunnel** as the connection, and select the same tunnel. OpenAI's [Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) covers tunnel setup and permissions.
 
-If the tunnel is missing from ChatGPT, the official [Tunnel End-User Guide](https://github.com/openai/tunnel-client/blob/master/docs/end-user-guide.md) covers workspace scope and **Tunnels Read + Use** permissions. `tunnel-client` also supports its profile/`init` workflow if you prefer named configuration over environment variables.
+Then try:
 
-### 5. Verify your first sandbox
+> Create a sandbox, run `uname -a` and `docker version` inside it, and show me the results.
 
-In ChatGPT, ask:
+If ChatGPT can run both commands, the connection is ready.
 
-> Create a new sandbox. Run `uname -a` and `docker version` inside it, then tell me the sandbox ID and workspace ID.
-
-A successful run should make ChatGPT create a sandbox, execute both commands inside the microVM, and return stable `sandbox_id` and `workspace_id` values. If that works, your ChatGPT → tunnel → chat2sbx → Docker Sandbox path is ready.
-
-## What ChatGPT can do
-
-Once connected, ChatGPT can create an isolated workspace and use its `sandbox_id` for later tools:
+## How it works
 
 ```text
-sandbox_create
-  -> bash / read / write / search / ...
-  -> bash_poll for long-running commands
-  -> sandbox_expose to preview a web service
-  -> sandbox_destroy when the environment is no longer needed
+ChatGPT
+  │
+  │ MCP
+  ▼
+Secure MCP Tunnel
+  │
+  ▼
+chat2sbx
+  │
+  └─ Docker Sandbox microVM
+       ├─ workspace
+       ├─ shell and dev tools
+       └─ private Docker Engine
 ```
 
-`sandbox_expose` uses direct port-mapping fields: `sandbox_port` is required, `host` defaults to `127.0.0.1`, and `host_port` is automatically assigned when omitted. Set an explicit host IPv4 address such as `0.0.0.0` and/or host port when you intentionally want a different mapping.
+The sandbox is where the agent does its work. Your host shell, sudo, Docker daemon, and arbitrary host paths stay outside that boundary. See [Architecture](./docs/architecture.md) for the detailed model.
 
-`sandbox_create` can optionally set a memory ceiling such as `512m` or `4g`. When reopening an existing sandbox, call `sandbox_get` first so its current state and any global sandbox instructions are loaded.
+## Features
 
-A typical long-running command looks like:
-
-```text
-bash
-  -> { session_id: "bash_...", status: "running", output: "..." }
-
-bash_poll
-  -> { sandbox_id: "sbx_...", session_id: "bash_..." }
-```
-
-## Workspaces
-
-chat2sbx uses one workspace model: every workspace is owned by chat2sbx and stored under `~/.chat2sbx/workspaces` by default. `sandbox_create` creates a new workspace when `workspace_id` is omitted, or reuses an existing managed workspace when `workspace_id` is provided.
-
-For repository work, clone the repository from inside the sandbox and authenticate Git there. chat2sbx does not let MCP callers request, clone, or mount arbitrary host paths.
-
-After a sandbox is removed, its workspace remains reusable for 30 days. When that retention period expires, chat2sbx moves the workspace to `~/.chat2sbx/archive` and keeps it there indefinitely. chat2sbx does not automatically delete archived workspace data.
-
-## Resource controls and global instructions
-
-Resource controls are optional. By default chat2sbx leaves Docker Sandboxes resource sizing unchanged and allows any number of active sandboxes. Operators can:
-
-- pass `memory` to `sandbox_create` with values such as `512m` or `4g`;
-- set `maxActiveSandboxes` in `~/.chat2sbx/config.json` or override it with `CHAT2SBX_MAX_ACTIVE_SANDBOXES`;
-- add `~/.chat2sbx/AGENTS.md` to provide global agent instructions returned by `sandbox_create` and `sandbox_get`.
-
-Global instructions are advisory text for agents. They are not copied into a workspace, interpreted as commands, or enforced as security policy. See [Architecture](./docs/architecture.md) for the exact lifecycle and resource semantics.
-
-## Security model
-
-chat2sbx is designed around a simple boundary: **the agent is powerful inside the microVM, not on the host.**
-
-- CodexPro and unrestricted Bash run inside Docker Sandboxes, never directly on the host.
-- MCP callers cannot request arbitrary host paths; they only receive chat2sbx-owned managed workspaces.
-- The MCP server has no built-in authentication and binds to loopback by default. Do not expose it directly to an untrusted network.
-- `sandbox_expose` publishes a sandbox port without adding authentication; treat the exposed service accordingly.
-- chat2sbx does not read tunnel credentials; internal CodexPro bearer tokens are not returned through MCP.
-
-Read [Architecture](./docs/architecture.md) for the canonical technical model and [Security](./SECURITY.md) for vulnerability reporting and expected security boundaries.
+- Create disposable Docker Sandbox microVMs from ChatGPT
+- Keep working files across sandbox replacements
+- Run file, repository, and shell tasks, including long-running commands
+- Use a private Docker Engine inside each sandbox
+- Expose ports for services running inside a sandbox
 
 ## CLI
 
 ```text
-chat2sbx setup                         Check prerequisites and prepare the sandbox template
-chat2sbx serve                         Run the local MCP gateway in the foreground
-chat2sbx status                        Show service and MCP readiness
-chat2sbx workspace list                List managed workspaces
-chat2sbx sandbox list                  List sandboxes through the local MCP gateway
-chat2sbx sandbox destroy <id>          Destroy a sandbox through the local MCP gateway
+chat2sbx setup                         Prepare the sandbox template
+chat2sbx serve                         Run the local MCP server
+chat2sbx status                        Check local service status
+chat2sbx workspace list                List workspaces
+chat2sbx sandbox list                  List sandboxes
+chat2sbx sandbox destroy <id>          Destroy a sandbox
 ```
 
-The sandbox CLI commands are intentionally thin local-MCP clients. They require `chat2sbx serve` to be running, but do not depend on the external Secure MCP Tunnel. Docker Sandbox diagnostics and reset/prune operations remain the responsibility of the underlying `sbx` CLI.
+Repository work happens inside the sandbox. Clone repositories there instead of mounting arbitrary host directories.
+
+Workspaces survive sandbox replacement so you can continue where you left off. See [Architecture](./docs/architecture.md) for retention details.
 
 ## Configuration
 
-The defaults are intentionally small. The table below contains the complete set of environment overrides.
+Most users can use the defaults. Common options are:
 
-| Variable                        | Default                       | Purpose                       |
-| ------------------------------- | ----------------------------- | ----------------------------- |
-| `CHAT2SBX_HOST`                 | `127.0.0.1`                   | MCP bind address              |
-| `CHAT2SBX_PORT`                 | `18788`                       | MCP port                      |
-| `CHAT2SBX_DATA_ROOT`            | `~/.chat2sbx`                 | Persistent chat2sbx data      |
-| `CHAT2SBX_STATE_DIR`            | `<data root>/state`           | Runtime state directory       |
-| `CHAT2SBX_WORKSPACE_ROOT`       | `<data root>/workspaces`      | Managed workspace directory   |
-| `CHAT2SBX_DATABASE_PATH`        | `<state dir>/chat2sbx.sqlite` | SQLite state database         |
-| `CHAT2SBX_MAX_ACTIVE_SANDBOXES` | `unlimited`                   | Optional active sandbox limit |
+- `CHAT2SBX_HOST` and `CHAT2SBX_PORT` to change the local MCP bind address
+- `CHAT2SBX_MAX_ACTIVE_SANDBOXES` to limit active sandboxes
+- `~/.chat2sbx/AGENTS.md` for instructions shared across sandboxes
 
-The same sandbox limit can be stored in `~/.chat2sbx/config.json` as `maxActiveSandboxes`; the environment variable takes precedence. `chat2sbx status` shows the effective limit and active count. Configuration is read when `chat2sbx serve` starts.
+The default data directory is `~/.chat2sbx`.
 
-Global sandbox instructions live at `~/.chat2sbx/AGENTS.md` by default. Changes to that file are read on the next `sandbox_create` or `sandbox_get` and do not require a server restart.
+## Security
+
+The MCP server binds to loopback by default and has no built-in authentication. Use an access-controlled transport such as Secure MCP Tunnel instead of exposing it directly to an untrusted network.
+
+Services published with `sandbox_expose` do not get authentication from chat2sbx. Read [SECURITY.md](./SECURITY.md) before exposing chat2sbx or sandbox services beyond your machine.
 
 ## Troubleshooting
 
-### ChatGPT cannot see or use chat2sbx
+If ChatGPT cannot reach chat2sbx, start with:
 
-1. Run `chat2sbx status` and confirm MCP is ready.
-2. Run `tunnel-client doctor --explain` and keep `tunnel-client run` alive.
-3. Confirm ChatGPT is configured with **Connection: Tunnel** and the same `tunnel_id` used by `tunnel-client`.
-4. If the tunnel does not appear, verify its ChatGPT workspace scope and **Tunnels Read + Use** permissions in the official [Tunnel End-User Guide](https://github.com/openai/tunnel-client/blob/master/docs/end-user-guide.md).
+```bash
+chat2sbx status
+tunnel-client doctor --explain
+```
 
-### A sandbox is stuck or failed
-
-List the records and explicitly destroy the failed sandbox:
+For a failed sandbox:
 
 ```bash
 chat2sbx sandbox list
 chat2sbx sandbox destroy <id>
 ```
 
-For Docker Sandbox runtime diagnostics, use the underlying `sbx` commands such as `sbx diagnose`, `sbx reset`, and `sbx prune` rather than a separate chat2sbx recovery layer.
+Use the underlying `sbx` CLI for Docker Sandbox diagnostics and reset/prune operations.
 
 ## Documentation
 
-| Document                                | Purpose                                                                     |
-| --------------------------------------- | --------------------------------------------------------------------------- |
-| [Architecture](./docs/architecture.md)  | Trust boundaries, runtime ownership, workspace lifecycle, and Bash sessions |
-| [Security](./SECURITY.md)               | Vulnerability reporting and security scope                                  |
-| [Contributing](./CONTRIBUTING.md)       | Development setup, validation, and contribution workflow                    |
-| [Tests](./test/README.md)               | Unit/integration/E2E boundaries and commands                                |
-| [Roadmap](./ROADMAP.md)                 | Intended product direction                                                  |
-| [Code of Conduct](./CODE_OF_CONDUCT.md) | Community participation expectations                                        |
+- [Architecture](./docs/architecture.md) — runtime model, trust boundaries, and lifecycle details
+- [Security](./SECURITY.md) — security scope and vulnerability reporting
+- [Contributing](./CONTRIBUTING.md) — development and contribution guide
+- [Tests](./test/README.md) — test layout and E2E requirements
+- [Roadmap](./ROADMAP.md) — planned product direction
 
 ## Project status
 
-chat2sbx is early-stage software. The core sandbox boundary and workflow are usable, but interfaces may still change as the project is tested with real users.
-
-If you try it, bug reports and concrete workflow feedback are especially useful. Use the repository's issue templates so reports include enough context to reproduce the problem.
+chat2sbx is early-stage software. The core workflow is usable, but interfaces may change as the project gets more real-world use. Bug reports and workflow feedback are welcome.
 
 ## License
 
