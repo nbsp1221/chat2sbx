@@ -1,6 +1,6 @@
 {
   "name": "chat2sbx",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Disposable sandbox computers for ChatGPT, running on your hardware.",
   "homepage": "https://github.com/nbsp1221/chat2sbx#readme",
   "bugs": "https://github.com/nbsp1221/chat2sbx/issues",
