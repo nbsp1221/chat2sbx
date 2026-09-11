@@ -7,12 +7,24 @@ import { formatMemory } from './memory.js';
 
 const execFileAsync = promisify(execFile);
 const PROCESS_STOP_GRACE_MS = 1_500;
+const PROCESS_STDERR_LIMIT = 64 * 1_024;
+
+interface TrackedProcess {
+  readonly child: ChildProcess;
+  readonly exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
+  stderr: Buffer;
+}
 
 interface SbxPort {
   readonly host_ip: string;
   readonly host_port: number;
   readonly sandbox_port: number;
   readonly protocol: string;
+}
+
+function appendTail(current: Buffer, chunk: Buffer, limit: number): Buffer {
+  const next = Buffer.concat([current, chunk]);
+  return next.byteLength <= limit ? next : next.subarray(next.byteLength - limit);
 }
 
 interface SbxListItem {
@@ -38,8 +50,12 @@ export interface SandboxDriver {
     workspace: Workspace,
     memoryBytes?: number,
   ): Promise<{ endpoint: string; runtimeRoot: string }>;
-  startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string): Promise<void>;
-  waitUntilHealthy(endpoint: string, authToken: string, timeoutMs?: number): Promise<void>;
+  startCodexPro(
+    runtimeName: string,
+    runtimeRoot: string,
+    endpoint: string,
+    authToken: string,
+  ): Promise<void>;
   isHealthy(endpoint: string, authToken: string): Promise<boolean>;
   expose(
     runtimeName: string,
@@ -56,7 +72,7 @@ export class SbxDriver implements SandboxDriver {
   readonly #binary: string;
   readonly #template: string;
   readonly #sandboxPort: number;
-  readonly #codexProProcesses = new Map<string, ChildProcess>();
+  readonly #codexProProcesses = new Map<string, TrackedProcess>();
 
   constructor(options: { binary: string; template: string; sandboxPort: number }) {
     this.#binary = options.binary;
@@ -114,7 +130,12 @@ export class SbxDriver implements SandboxDriver {
     return { endpoint: `http://127.0.0.1:${port.host_port}/mcp`, runtimeRoot: rootOutput.trim() };
   }
 
-  async startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string): Promise<void> {
+  async startCodexPro(
+    runtimeName: string,
+    runtimeRoot: string,
+    endpoint: string,
+    authToken: string,
+  ): Promise<void> {
     if (this.#codexProProcesses.has(runtimeName)) {
       throw new Error(`CodexPro is already running in ${runtimeName}`);
     }
@@ -146,14 +167,24 @@ export class SbxDriver implements SandboxDriver {
       ],
       {
         env: { ...process.env, CODEXPRO_HTTP_TOKEN: authToken },
-        stdio: ['pipe', 'ignore', 'inherit'],
+        stdio: ['pipe', 'ignore', 'pipe'],
       },
     );
-    this.#codexProProcesses.set(runtimeName, child);
-    child.once('exit', () => {
-      if (this.#codexProProcesses.get(runtimeName) === child) {
-        this.#codexProProcesses.delete(runtimeName);
-      }
+    let resolveExit!: (result: { code: number | null; signal: NodeJS.Signals | null }) => void;
+    const tracked: TrackedProcess = {
+      child,
+      exited: new Promise((resolve) => {
+        resolveExit = resolve;
+      }),
+      stderr: Buffer.alloc(0),
+    };
+    this.#codexProProcesses.set(runtimeName, tracked);
+    child.stderr?.on('data', (chunk: Buffer) => {
+      process.stderr.write(chunk);
+      tracked.stderr = appendTail(tracked.stderr, chunk, PROCESS_STDERR_LIMIT);
+    });
+    child.once('close', (code, signal) => {
+      resolveExit({ code, signal });
     });
     await new Promise<void>((resolve, reject) => {
       child.once('spawn', resolve);
@@ -162,9 +193,21 @@ export class SbxDriver implements SandboxDriver {
       this.#codexProProcesses.delete(runtimeName);
       throw error;
     });
+    const outcome = await Promise.race([
+      this.#waitUntilHealthy(endpoint, authToken).then(() => ({ status: 'ready' }) as const),
+      tracked.exited.then((result) => ({ status: 'exited', ...result }) as const),
+    ]);
+    if (outcome.status === 'exited') {
+      const reason =
+        outcome.code === null ? `signal ${outcome.signal ?? 'unknown'}` : `code ${outcome.code}`;
+      const detail = tracked.stderr.toString('utf8').trim();
+      throw new Error(
+        `sbx exec for ${runtimeName} exited with ${reason}${detail ? `: ${detail}` : ''}`,
+      );
+    }
   }
 
-  async waitUntilHealthy(endpoint: string, authToken: string, timeoutMs = 15_000): Promise<void> {
+  async #waitUntilHealthy(endpoint: string, authToken: string, timeoutMs = 15_000): Promise<void> {
     const healthUrl = new URL('/healthz', endpoint);
     const deadline = Date.now() + timeoutMs;
     let lastError = 'not ready';
@@ -245,11 +288,12 @@ export class SbxDriver implements SandboxDriver {
   }
 
   async #stopCodexPro(runtimeName: string): Promise<void> {
-    const child = this.#codexProProcesses.get(runtimeName);
-    if (!child) {
+    const tracked = this.#codexProProcesses.get(runtimeName);
+    if (!tracked) {
       return;
     }
     this.#codexProProcesses.delete(runtimeName);
+    const { child } = tracked;
     if (child.exitCode !== null || child.signalCode !== null) {
       return;
     }

@@ -97,8 +97,12 @@ export class SandboxService {
       try {
         const runtime = await this.#driver.create(sandbox.runtimeName, workspace, memoryBytes);
         const authToken = randomBytes(32).toString('hex');
-        await this.#driver.startCodexPro(sandbox.runtimeName, runtime.runtimeRoot, authToken);
-        await this.#driver.waitUntilHealthy(runtime.endpoint, authToken);
+        await this.#driver.startCodexPro(
+          sandbox.runtimeName,
+          runtime.runtimeRoot,
+          runtime.endpoint,
+          authToken,
+        );
         const running: Sandbox = { ...sandbox, ...runtime, authToken, status: 'running' };
         this.#database.saveSandbox(running);
         workspace = this.#workspaces.activate(workspace);

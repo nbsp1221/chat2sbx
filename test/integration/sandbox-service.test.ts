@@ -71,10 +71,6 @@ class FakeDriver implements SandboxDriver {
 
   startCodexPro(): Promise<void> {
     this.startCalls += 1;
-    return Promise.resolve();
-  }
-
-  waitUntilHealthy(): Promise<void> {
     return this.healthError ? Promise.reject(this.healthError) : Promise.resolve();
   }
 }
