@@ -1,6 +1,7 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import type { Workspace } from '../domain/types.js';
 import { formatMemory } from './memory.js';
@@ -193,40 +194,52 @@ export class SbxDriver implements SandboxDriver {
       this.#codexProProcesses.delete(runtimeName);
       throw error;
     });
-    const outcome = await Promise.race([
-      this.#waitUntilHealthy(endpoint, authToken).then(() => ({ status: 'ready' }) as const),
-      tracked.exited.then((result) => ({ status: 'exited', ...result }) as const),
-    ]);
-    if (outcome.status === 'exited') {
-      const reason =
-        outcome.code === null ? `signal ${outcome.signal ?? 'unknown'}` : `code ${outcome.code}`;
-      const detail = tracked.stderr.toString('utf8').trim();
-      throw new Error(
-        `sbx exec for ${runtimeName} exited with ${reason}${detail ? `: ${detail}` : ''}`,
-      );
+    const readiness = new AbortController();
+    try {
+      const outcome = await Promise.race([
+        this.#waitUntilHealthy(endpoint, authToken, readiness.signal).then(
+          () => ({ status: 'ready' }) as const,
+        ),
+        tracked.exited.then((result) => ({ status: 'exited', ...result }) as const),
+      ]);
+      if (outcome.status === 'exited') {
+        const reason =
+          outcome.code === null ? `signal ${outcome.signal ?? 'unknown'}` : `code ${outcome.code}`;
+        const detail = tracked.stderr.toString('utf8').trim();
+        throw new Error(
+          `sbx exec for ${runtimeName} exited with ${reason}${detail ? `: ${detail}` : ''}`,
+        );
+      }
+    } finally {
+      readiness.abort();
     }
   }
 
-  async #waitUntilHealthy(endpoint: string, authToken: string, timeoutMs = 15_000): Promise<void> {
+  async #waitUntilHealthy(
+    endpoint: string,
+    authToken: string,
+    signal: AbortSignal,
+    timeoutMs = 15_000,
+  ): Promise<void> {
     const healthUrl = new URL('/healthz', endpoint);
     const deadline = Date.now() + timeoutMs;
     let lastError = 'not ready';
     while (Date.now() < deadline) {
+      signal.throwIfAborted();
       try {
         const response = await fetch(healthUrl, {
           headers: { authorization: `Bearer ${authToken}` },
-          signal: AbortSignal.timeout(1_000),
+          signal: AbortSignal.any([signal, AbortSignal.timeout(1_000)]),
         });
         if (response.ok) {
           return;
         }
         lastError = `HTTP ${response.status}`;
       } catch (error) {
+        signal.throwIfAborted();
         lastError = error instanceof Error ? error.message : String(error);
       }
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 150);
-      });
+      await delay(150, undefined, { signal });
     }
     throw new Error(`CodexPro did not become healthy: ${lastError}`);
   }
