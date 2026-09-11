@@ -25,6 +25,10 @@ class FakeDriver implements SandboxDriver {
     return Promise.resolve();
   }
 
+  close(): Promise<void> {
+    return Promise.resolve();
+  }
+
   async create(
     name: string,
     _workspace: unknown,
@@ -67,10 +71,6 @@ class FakeDriver implements SandboxDriver {
 
   startCodexPro(): Promise<void> {
     this.startCalls += 1;
-    return Promise.resolve();
-  }
-
-  waitUntilHealthy(): Promise<void> {
     return this.healthError ? Promise.reject(this.healthError) : Promise.resolve();
   }
 }

@@ -1,16 +1,31 @@
-import { execFile } from 'node:child_process';
+import { type ChildProcess, execFile, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { createServer } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import type { Workspace } from '../domain/types.js';
 import { formatMemory } from './memory.js';
 
 const execFileAsync = promisify(execFile);
+const PROCESS_STOP_GRACE_MS = 1_500;
+const PROCESS_STDERR_LIMIT = 64 * 1_024;
+
+interface TrackedProcess {
+  readonly child: ChildProcess;
+  readonly exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
+  stderr: Buffer;
+}
 
 interface SbxPort {
   readonly host_ip: string;
   readonly host_port: number;
   readonly sandbox_port: number;
   readonly protocol: string;
+}
+
+function appendTail(current: Buffer, chunk: Buffer, limit: number): Buffer {
+  const next = Buffer.concat([current, chunk]);
+  return next.byteLength <= limit ? next : next.subarray(next.byteLength - limit);
 }
 
 interface SbxListItem {
@@ -36,8 +51,12 @@ export interface SandboxDriver {
     workspace: Workspace,
     memoryBytes?: number,
   ): Promise<{ endpoint: string; runtimeRoot: string }>;
-  startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string): Promise<void>;
-  waitUntilHealthy(endpoint: string, authToken: string, timeoutMs?: number): Promise<void>;
+  startCodexPro(
+    runtimeName: string,
+    runtimeRoot: string,
+    endpoint: string,
+    authToken: string,
+  ): Promise<void>;
   isHealthy(endpoint: string, authToken: string): Promise<boolean>;
   expose(
     runtimeName: string,
@@ -47,12 +66,14 @@ export interface SandboxDriver {
   ): Promise<PublishedPort>;
   remove(runtimeName: string): Promise<void>;
   list(): Promise<readonly RuntimeInfo[]>;
+  close(): Promise<void>;
 }
 
 export class SbxDriver implements SandboxDriver {
   readonly #binary: string;
   readonly #template: string;
   readonly #sandboxPort: number;
+  readonly #codexProProcesses = new Map<string, TrackedProcess>();
 
   constructor(options: { binary: string; template: string; sandboxPort: number }) {
     this.#binary = options.binary;
@@ -110,19 +131,25 @@ export class SbxDriver implements SandboxDriver {
     return { endpoint: `http://127.0.0.1:${port.host_port}/mcp`, runtimeRoot: rootOutput.trim() };
   }
 
-  async startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string): Promise<void> {
-    // sbx 0.39 waits for guest exit even with -d (docker/sbx-releases#505).
-    // Background the VM-owned service inside the guest so the host exec is short-lived.
-    await this.#run(
+  async startCodexPro(
+    runtimeName: string,
+    runtimeRoot: string,
+    endpoint: string,
+    authToken: string,
+  ): Promise<void> {
+    if (this.#codexProProcesses.has(runtimeName)) {
+      throw new Error(`CodexPro is already running in ${runtimeName}`);
+    }
+    // Docker Sandboxes currently ties a background guest process to the sbx exec scope.
+    // Keep one attached exec session so CodexPro and its microVM remain alive.
+    const child = spawn(
+      this.#binary,
       [
         'exec',
+        '-i',
         '-e',
         'CODEXPRO_HTTP_TOKEN',
         runtimeName,
-        'sh',
-        '-c',
-        'nohup "$@" </dev/null >/tmp/chat2sbx-codexpro.log 2>&1 &',
-        'chat2sbx-codexpro',
         'codexpro-mcp-http',
         '--root',
         runtimeRoot,
@@ -139,31 +166,80 @@ export class SbxDriver implements SandboxDriver {
         '--tool-mode',
         'standard',
       ],
-      30_000,
-      { ...process.env, CODEXPRO_HTTP_TOKEN: authToken },
+      {
+        env: { ...process.env, CODEXPRO_HTTP_TOKEN: authToken },
+        stdio: ['pipe', 'ignore', 'pipe'],
+      },
     );
+    let resolveExit!: (result: { code: number | null; signal: NodeJS.Signals | null }) => void;
+    const tracked: TrackedProcess = {
+      child,
+      exited: new Promise((resolve) => {
+        resolveExit = resolve;
+      }),
+      stderr: Buffer.alloc(0),
+    };
+    this.#codexProProcesses.set(runtimeName, tracked);
+    child.stderr?.on('data', (chunk: Buffer) => {
+      process.stderr.write(chunk);
+      tracked.stderr = appendTail(tracked.stderr, chunk, PROCESS_STDERR_LIMIT);
+    });
+    child.once('close', (code, signal) => {
+      resolveExit({ code, signal });
+    });
+    await new Promise<void>((resolve, reject) => {
+      child.once('spawn', resolve);
+      child.once('error', reject);
+    }).catch((error) => {
+      this.#codexProProcesses.delete(runtimeName);
+      throw error;
+    });
+    const readiness = new AbortController();
+    try {
+      const outcome = await Promise.race([
+        this.#waitUntilHealthy(endpoint, authToken, readiness.signal).then(
+          () => ({ status: 'ready' }) as const,
+        ),
+        tracked.exited.then((result) => ({ status: 'exited', ...result }) as const),
+      ]);
+      if (outcome.status === 'exited') {
+        const reason =
+          outcome.code === null ? `signal ${outcome.signal ?? 'unknown'}` : `code ${outcome.code}`;
+        const detail = tracked.stderr.toString('utf8').trim();
+        throw new Error(
+          `sbx exec for ${runtimeName} exited with ${reason}${detail ? `: ${detail}` : ''}`,
+        );
+      }
+    } finally {
+      readiness.abort();
+    }
   }
 
-  async waitUntilHealthy(endpoint: string, authToken: string, timeoutMs = 15_000): Promise<void> {
+  async #waitUntilHealthy(
+    endpoint: string,
+    authToken: string,
+    signal: AbortSignal,
+    timeoutMs = 15_000,
+  ): Promise<void> {
     const healthUrl = new URL('/healthz', endpoint);
     const deadline = Date.now() + timeoutMs;
     let lastError = 'not ready';
     while (Date.now() < deadline) {
+      signal.throwIfAborted();
       try {
         const response = await fetch(healthUrl, {
           headers: { authorization: `Bearer ${authToken}` },
-          signal: AbortSignal.timeout(1_000),
+          signal: AbortSignal.any([signal, AbortSignal.timeout(1_000)]),
         });
         if (response.ok) {
           return;
         }
         lastError = `HTTP ${response.status}`;
       } catch (error) {
+        signal.throwIfAborted();
         lastError = error instanceof Error ? error.message : String(error);
       }
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 150);
-      });
+      await delay(150, undefined, { signal });
     }
     throw new Error(`CodexPro did not become healthy: ${lastError}`);
   }
@@ -208,6 +284,7 @@ export class SbxDriver implements SandboxDriver {
   }
 
   async remove(runtimeName: string): Promise<void> {
+    await this.#stopCodexPro(runtimeName);
     if ((await this.list()).some((runtime) => runtime.name === runtimeName)) {
       await this.#run(['rm', '--force', runtimeName], 120_000);
     }
@@ -217,6 +294,37 @@ export class SbxDriver implements SandboxDriver {
     const { stdout } = await this.#run(['ls', '--json']);
     const parsed = JSON.parse(stdout) as { sandboxes: SbxListItem[] };
     return parsed.sandboxes.map(({ name, status }) => ({ name, status }));
+  }
+
+  async close(): Promise<void> {
+    await Promise.all([...this.#codexProProcesses.keys()].map((name) => this.#stopCodexPro(name)));
+  }
+
+  async #stopCodexPro(runtimeName: string): Promise<void> {
+    const tracked = this.#codexProProcesses.get(runtimeName);
+    if (!tracked) {
+      return;
+    }
+    this.#codexProProcesses.delete(runtimeName);
+    const { child } = tracked;
+    if (child.exitCode !== null || child.signalCode !== null) {
+      return;
+    }
+
+    const exited = once(child, 'exit').then(() => undefined);
+    child.stdin?.end();
+    child.kill('SIGTERM');
+    const graceful = await Promise.race([
+      exited.then(() => true),
+      new Promise<false>((resolve) => {
+        const timer = setTimeout(() => resolve(false), PROCESS_STOP_GRACE_MS);
+        timer.unref();
+      }),
+    ]);
+    if (!graceful && child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL');
+      await exited;
+    }
   }
 
   async #publishedPort(

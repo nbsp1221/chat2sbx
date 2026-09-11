@@ -94,6 +94,7 @@ test.each(['SIGTERM', 'SIGINT'] as const)(
           await driver.remove(sandbox.runtimeName);
         }
       } finally {
+        await driver.close();
         database.close();
       }
       fs.rmSync(root, { recursive: true });
