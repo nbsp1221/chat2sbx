@@ -25,6 +25,10 @@ class FakeDriver implements SandboxDriver {
     return Promise.resolve();
   }
 
+  close(): Promise<void> {
+    return Promise.resolve();
+  }
+
   async create(
     name: string,
     _workspace: unknown,

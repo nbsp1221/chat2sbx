@@ -119,6 +119,7 @@ async function runRuntime(config: RuntimeConfig): Promise<void> {
       await closeServer(server);
     }
     await codexPro?.closeAll();
+    await driver.close();
     database.close();
   }
 }

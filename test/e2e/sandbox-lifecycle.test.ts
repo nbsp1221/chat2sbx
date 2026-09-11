@@ -220,14 +220,28 @@ test('routes full shell and private Docker only into a real microVM', async () =
     });
     expect(afterLongCommand.isError, JSON.stringify(afterLongCommand)).not.toBe(true);
 
-    const preview = await callTool(url, 11, 'bash', {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 75_000);
+    });
+    const afterDockerCleanupWindow = await callTool(url, 11, 'bash', {
+      command: 'printf alive-after-75s',
+      sandbox_id: sandboxId,
+    });
+    expect(afterDockerCleanupWindow.isError, JSON.stringify(afterDockerCleanupWindow)).not.toBe(
+      true,
+    );
+    expect((afterDockerCleanupWindow.structuredContent as { output: string }).output).toContain(
+      'alive-after-75s',
+    );
+
+    const preview = await callTool(url, 12, 'bash', {
       command:
         'nohup node -e \'require("http").createServer((_request, response) => response.end("sandbox-preview")).listen(3000, "0.0.0.0")\' >/tmp/chat2sbx-preview.log 2>&1 </dev/null &',
       sandbox_id: sandboxId,
     });
     expect(preview.isError, JSON.stringify(preview)).not.toBe(true);
 
-    const exposed = await callTool(url, 12, 'sandbox_expose', {
+    const exposed = await callTool(url, 13, 'sandbox_expose', {
       sandbox_id: sandboxId,
       sandbox_port: 3_000,
     });
@@ -245,18 +259,18 @@ test('routes full shell and private Docker only into a real microVM', async () =
       'sandbox-preview',
     );
 
-    const repeated = await callTool(url, 13, 'sandbox_expose', {
+    const repeated = await callTool(url, 14, 'sandbox_expose', {
       sandbox_id: sandboxId,
       sandbox_port: 3_000,
     });
     expect(repeated.structuredContent).toEqual(exposure);
 
-    const listed = await callTool(url, 14, 'sandbox_list', {});
+    const listed = await callTool(url, 15, 'sandbox_list', {});
     expect(
       (listed.structuredContent as { sandboxes: Array<{ id: string }> }).sandboxes[0]?.id,
     ).toBe(sandboxId);
 
-    const destroyed = await callTool(url, 15, 'sandbox_destroy', { sandbox_id: sandboxId });
+    const destroyed = await callTool(url, 16, 'sandbox_destroy', { sandbox_id: sandboxId });
     expect((destroyed.structuredContent as { status: string }).status).toBe('destroyed');
     sandboxId = undefined;
     const retainedWorkspace = workspaces
@@ -292,6 +306,7 @@ test('routes full shell and private Docker only into a real microVM', async () =
       gateway.close(() => resolve());
     });
     await clients.closeAll();
+    await driver.close();
     database.close();
     if (fs.existsSync(hostEscapeMarker)) {
       fs.rmSync(hostEscapeMarker, { force: true });
